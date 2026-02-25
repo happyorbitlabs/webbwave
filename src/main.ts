@@ -1,0 +1,327 @@
+import './style.css'
+import { JWSTFetcher, DEFAULT_OBSERVATION, type ObservationData } from './data/JWSTFetcher'
+import { AmbientEngine } from './audio/AmbientEngine'
+import { SpaceRenderer } from './viz/SpaceRenderer'
+import { GenerativeBackground } from './viz/GenerativeBackground'
+import { InfoOverlay } from './ui/InfoOverlay'
+import { InfoPanel } from './ui/InfoPanel'
+
+// ── DOM ──────────────────────────────────────────────────────────────────────
+
+const canvas = document.getElementById('space-canvas') as HTMLCanvasElement
+const overlayContainer = document.getElementById('overlay') as HTMLElement
+
+// Start button
+const startBtn = document.createElement('button')
+startBtn.id = 'start-btn'
+startBtn.textContent = '▶  START LISTENING'
+document.getElementById('app')!.appendChild(startBtn)
+
+// Status badge
+const status = document.createElement('div')
+status.id = 'status'
+status.textContent = 'LIVE · JAMES WEBB SPACE TELESCOPE'
+document.getElementById('app')!.appendChild(status)
+
+// JWST badge
+const badge = document.createElement('div')
+badge.id = 'badge'
+badge.innerHTML = 'WEBB <span>SYNTH</span>'
+document.getElementById('app')!.appendChild(badge)
+
+// Controls panel
+const controls = document.createElement('div')
+controls.id = 'controls'
+controls.innerHTML = `
+  <div class="knob-group">
+    <div class="knob-wrap">
+      <input type="range" id="volume-slider" min="0" max="100" value="100" />
+      <div class="knob-label">VOLUME</div>
+    </div>
+    <div class="knob-wrap">
+      <input type="range" id="space-slider" min="0" max="100" value="65" />
+      <div class="knob-label">SPACE</div>
+    </div>
+    <div class="knob-wrap">
+      <input type="range" id="colour-slider" min="0" max="100" value="40" />
+      <div class="knob-label">COLOUR</div>
+    </div>
+    <div class="knob-wrap">
+      <input type="range" id="scatter-slider" min="0" max="100" value="45" />
+      <div class="knob-label">SCATTER</div>
+    </div>
+    <div class="knob-wrap">
+      <input type="range" id="pulse-slider" min="0" max="100" value="25" />
+      <div class="knob-label">PULSE</div>
+    </div>
+  </div>
+`
+document.getElementById('app')!.appendChild(controls)
+
+// Generative background canvas — rendered at 50% resolution, CSS-scaled to fill
+const genCanvas = document.createElement('canvas')
+genCanvas.id = 'generative-canvas'
+genCanvas.setAttribute('aria-hidden', 'true')
+genCanvas.width  = Math.max(1, Math.floor(window.innerWidth  * 0.5))
+genCanvas.height = Math.max(1, Math.floor(window.innerHeight * 0.5))
+document.getElementById('app')!.insertBefore(genCanvas, canvas)
+
+// ── Core instances ────────────────────────────────────────────────────────────
+
+const renderer     = new SpaceRenderer(canvas)
+const generativeBg = new GenerativeBackground(genCanvas)
+const overlay      = new InfoOverlay(overlayContainer)
+const engine       = new AmbientEngine()
+const fetcher      = new JWSTFetcher()
+new InfoPanel(document.getElementById('app')!)
+
+// Show default observation immediately (no audio yet)
+renderer.setObservation(DEFAULT_OBSERVATION)
+generativeBg.setObservation(DEFAULT_OBSERVATION)
+overlay.update(DEFAULT_OBSERVATION)
+
+// Start animation loops right away (no audio)
+renderer.start()
+generativeBg.start()
+
+// ── Controls wiring ───────────────────────────────────────────────────────────
+
+const spaceSlider   = document.getElementById('space-slider')   as HTMLInputElement
+const colourSlider  = document.getElementById('colour-slider')  as HTMLInputElement
+const scatterSlider = document.getElementById('scatter-slider') as HTMLInputElement
+const pulseSlider   = document.getElementById('pulse-slider')   as HTMLInputElement
+const volumeSlider  = document.getElementById('volume-slider')  as HTMLInputElement
+
+spaceSlider.addEventListener('input', () => {
+  engine.setSpace(Number(spaceSlider.value) / 100)
+})
+
+colourSlider.addEventListener('input', () => {
+  engine.setColour(Number(colourSlider.value) / 100)
+})
+
+scatterSlider.addEventListener('input', () => {
+  engine.setScatter(Number(scatterSlider.value) / 100)
+})
+
+pulseSlider.addEventListener('input', () => {
+  engine.setPulse(Number(pulseSlider.value) / 100)
+})
+
+volumeSlider.addEventListener('input', () => {
+  engine.setVolume(Number(volumeSlider.value) / 100)
+})
+
+// ── Aim / sky-drag ────────────────────────────────────────────────────────────
+
+let aimActive = false
+let returnTimer: ReturnType<typeof setTimeout> | null = null
+let lastLiveStatus = 'LIVE · JAMES WEBB SPACE TELESCOPE'
+let lastObservation: ObservationData = DEFAULT_OBSERVATION
+
+// ── Zoom ──────────────────────────────────────────────────────────────────────
+
+let zoomLevel = 1.0
+let pinchStartDist: number | null = null
+let pinchStartZoom = 1.0
+
+function clampZoom(z: number) { return Math.max(0.5, Math.min(3.0, z)) }
+
+function applyZoom(z: number) {
+  zoomLevel = z
+  renderer.setZoom(z)
+  generativeBg.setZoom(z)
+  const zoomNorm = (z - 0.5) / 2.5   // remap [0.5, 3.0] → [0, 1]
+  engine.setZoom(zoomNorm)
+}
+
+function screenToSky(clientX: number, clientY: number): { ra: number; dec: number } {
+  const ra  = (clientX / window.innerWidth)  * 360
+  const dec = 90 - (clientY / window.innerHeight) * 180
+  return { ra, dec }
+}
+
+function onAimMove(clientX: number, clientY: number) {
+  const { ra, dec } = screenToSky(clientX, clientY)
+  const nx = clientX / window.innerWidth
+  const ny = clientY / window.innerHeight
+
+  renderer.setAimCoords(ra, dec)
+  renderer.setAimPoint(nx, ny)
+  generativeBg.setAimCoords(ra, dec)
+
+  if (engine.isStarted) engine.updateFromCoords(ra, dec)
+
+  overlay.setCoords(ra, dec)
+
+  const raSgn  = ra.toFixed(1)
+  const decSgn = (dec >= 0 ? '+' : '') + dec.toFixed(1)
+  status.textContent = `AIM · RA ${raSgn}° · DEC ${decSgn}°`
+}
+
+function onAimStart(clientX: number, clientY: number) {
+  if (returnTimer !== null) { clearTimeout(returnTimer); returnTimer = null }
+  aimActive = true
+  canvas.classList.add('aiming')
+  onAimMove(clientX, clientY)
+}
+
+function onAimEnd() {
+  aimActive = false
+  canvas.classList.remove('aiming')
+  renderer.setAimPoint(null, null)
+
+  returnTimer = setTimeout(() => {
+    status.textContent = lastLiveStatus
+    engine.updateFromData(lastObservation)
+    renderer.setObservation(lastObservation)
+    generativeBg.setAimCoords(lastObservation.ra, lastObservation.dec)
+    overlay.resetCoords(lastObservation.ra, lastObservation.dec)
+    returnTimer = null
+  }, 3000)
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  // Only drag on the canvas itself, not bubbled from UI
+  if (e.target !== canvas) return
+  // Ignore second touch finger (pinch gesture — handled by touch events)
+  if (e.pointerType === 'touch' && !e.isPrimary) return
+  canvas.setPointerCapture(e.pointerId)
+  onAimStart(e.clientX, e.clientY)
+})
+
+canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'touch' && !e.isPrimary) return
+  if (aimActive) {
+    onAimMove(e.clientX, e.clientY)
+  } else if (status.classList.contains('visible')) {
+    // Show live sky coords on hover even without dragging
+    const { ra, dec } = screenToSky(e.clientX, e.clientY)
+    overlay.setCoords(ra, dec)
+    const raSgn  = ra.toFixed(1)
+    const decSgn = (dec >= 0 ? '+' : '') + dec.toFixed(1)
+    status.textContent = `RA ${raSgn}° · DEC ${decSgn}°`
+  }
+})
+
+canvas.addEventListener('pointerleave', () => {
+  if (!aimActive && status.classList.contains('visible')) {
+    status.textContent = lastLiveStatus
+    overlay.resetCoords(lastObservation.ra, lastObservation.dec)
+  }
+})
+
+canvas.addEventListener('pointerup', () => {
+  if (!aimActive) return
+  onAimEnd()
+})
+
+canvas.addEventListener('pointercancel', () => {
+  if (!aimActive) return
+  onAimEnd()
+})
+
+// ── Zoom — scroll wheel (desktop) ────────────────────────────────────────────
+
+canvas.addEventListener('wheel', (e: WheelEvent) => {
+  e.preventDefault()
+  // Normalise deltaY: line mode (Firefox) → pixels
+  const deltaPixels = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY
+  applyZoom(clampZoom(zoomLevel * (1 - deltaPixels * 0.001)))
+}, { passive: false })
+
+// ── Zoom — pinch gesture (mobile) ────────────────────────────────────────────
+
+canvas.addEventListener('touchstart', (e: TouchEvent) => {
+  if (e.touches.length === 2) {
+    e.preventDefault()
+    pinchStartDist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY,
+    )
+    pinchStartZoom = zoomLevel
+  }
+}, { passive: false })
+
+canvas.addEventListener('touchmove', (e: TouchEvent) => {
+  if (e.touches.length === 2 && pinchStartDist !== null) {
+    e.preventDefault()
+    const dist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY,
+    )
+    applyZoom(clampZoom(pinchStartZoom * (dist / pinchStartDist)))
+  }
+}, { passive: false })
+
+canvas.addEventListener('touchend', () => {
+  pinchStartDist = null
+})
+
+// ── RMS → renderer tick ───────────────────────────────────────────────────────
+
+function tick() {
+  if (engine.isStarted) {
+    renderer.setRMS(engine.getRMS())
+  }
+  requestAnimationFrame(tick)
+}
+requestAnimationFrame(tick)
+
+// ── Start button ──────────────────────────────────────────────────────────────
+
+async function startAudio() {
+  startBtn.classList.add('hidden')
+
+  // Web Audio requires user gesture — create context here
+  const audioCtx = new AudioContext()
+  await audioCtx.resume()
+
+  engine.setSpace(Number(spaceSlider.value) / 100)
+  engine.setColour(Number(colourSlider.value) / 100)
+  engine.setScatter(Number(scatterSlider.value) / 100)
+  engine.setPulse(Number(pulseSlider.value) / 100)
+  engine.setVolume(Number(volumeSlider.value) / 100)
+  engine.start(audioCtx)
+
+  // Apply default data immediately so audio starts
+  engine.updateFromData(DEFAULT_OBSERVATION)
+
+  // Begin live JWST polling
+  fetcher.start((data) => {
+    lastObservation = data
+    lastLiveStatus = `LIVE · ${data.targetName.toUpperCase()} · ${data.instrument}`
+
+    // Only push updates to audio/visuals if user isn't manually aiming
+    if (!aimActive) {
+      engine.updateFromData(data)
+      renderer.setObservation(data)
+      status.textContent = lastLiveStatus
+    }
+    // Always update generative background and overlay
+    generativeBg.setObservation(data)
+    overlay.update(data)
+  })
+
+  // Show status and flip button to stop mode
+  status.classList.add('visible')
+  startBtn.textContent = '■  STOP'
+  startBtn.classList.add('stop-mode')
+  startBtn.classList.remove('hidden')
+}
+
+function stopAudio() {
+  engine.stop()
+  fetcher.stop()
+  status.classList.remove('visible')
+  startBtn.textContent = '▶  START LISTENING'
+  startBtn.classList.remove('stop-mode')
+}
+
+startBtn.addEventListener('click', () => {
+  if (engine.isStarted) {
+    stopAudio()
+  } else {
+    startAudio()
+  }
+})
