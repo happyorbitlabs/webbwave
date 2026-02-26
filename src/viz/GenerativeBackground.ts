@@ -323,7 +323,7 @@ export class GenerativeBackground {
         hue: h + (rng() - 0.5) * 30,
         sat: s,
         lit: l,
-        alpha: 0.15 + rng() * 0.45,
+        alpha: 0.1 + rng() * 0.3,
         phase: rng() * Math.PI * 2,
         kind: "galaxy",
       });
@@ -344,7 +344,7 @@ export class GenerativeBackground {
         hue: h,
         sat: s,
         lit: l + 10,
-        alpha: 0.08 + rng() * 0.18,
+        alpha: 0.05 + rng() * 0.12,
         phase: rng() * Math.PI * 2,
         kind: "arc",
       });
@@ -535,8 +535,11 @@ export class GenerativeBackground {
 
     for (const obj of scene.objects) {
       const glowPulse = 0.7 + 0.3 * Math.sin(tSec * 0.04 + obj.phase);
-      const driftX = Math.sin(tSec * 0.02 + obj.phase) * 3;
-      const driftY = Math.cos(tSec * 0.017 + obj.phase + 1.1) * 3;
+      const driftSpeed = obj.kind === "arc" ? 0.045 : 0.02;
+      const driftRadius = obj.kind === "arc" ? 5 : 3;
+      const driftX = Math.sin(tSec * driftSpeed + obj.phase) * driftRadius;
+      const driftY =
+        Math.cos(tSec * (driftSpeed * 0.85) + obj.phase + 1.1) * driftRadius;
 
       const px = ((obj.x + parallaxOffX + 1) % 1) * w + driftX;
       const py = ((obj.y + parallaxOffY + 1) % 1) * h + driftY;
@@ -578,6 +581,8 @@ export class GenerativeBackground {
             obj.sat,
             obj.lit,
             alpha,
+            tSec,
+            obj.phase,
           );
           break;
         case "cloud":
@@ -729,25 +734,45 @@ export class GenerativeBackground {
     sat: number,
     lit: number,
     alpha: number,
+    tSec: number,
+    phase: number,
   ): void {
+    const breath = 1 + Math.sin(tSec * 0.35 + phase) * 0.04;
+    const arcRx = Math.max(1, rx * breath);
+    const arcRy = Math.max(1, ry * breath);
+    const arcStart = Math.PI * (0.22 + 0.05 * Math.sin(tSec * 0.12 + phase));
+    const arcSweep =
+      Math.PI * (0.82 + 0.12 * Math.sin(tSec * 0.09 + phase * 0.7));
+    const arcEnd = arcStart + arcSweep;
+
     octx.save();
     octx.translate(cx, cy);
-    octx.rotate(angle);
+    octx.rotate(angle + Math.sin(tSec * 0.05 + phase) * 0.05);
+
+    // Base arc path with a subtle flowing dash animation.
+    octx.setLineDash([Math.max(8, arcRx * 0.2), Math.max(6, arcRx * 0.12)]);
+    octx.lineDashOffset = -(tSec * 8 + phase * 20);
     octx.beginPath();
-    octx.ellipse(
-      0,
-      0,
-      Math.max(1, rx),
-      Math.max(1, ry),
-      0,
-      Math.PI * 0.25,
-      Math.PI * 1.15,
-    );
-    octx.strokeStyle = hsl(hue, sat, lit, alpha);
-    octx.lineWidth = 1.5 + alpha * 2;
-    octx.shadowColor = hsl(hue, sat, lit, 0.4);
-    octx.shadowBlur = 6;
+    octx.ellipse(0, 0, arcRx, arcRy, 0, arcStart, arcEnd);
+    octx.strokeStyle = hsl(hue, sat, lit, alpha * 0.75);
+    octx.lineWidth = 1.1 + alpha * 1.2;
+    octx.shadowColor = hsl(hue, sat, lit, 0.3);
+    octx.shadowBlur = 5;
     octx.stroke();
+
+    // Traveling highlight segment to make lensing paths feel alive.
+    const segmentT = (Math.sin(tSec * 0.22 + phase) + 1) * 0.5;
+    const segmentStart = arcStart + arcSweep * segmentT;
+    const segmentEnd = Math.min(arcEnd, segmentStart + arcSweep * 0.15);
+    octx.setLineDash([]);
+    octx.beginPath();
+    octx.ellipse(0, 0, arcRx, arcRy, 0, segmentStart, segmentEnd);
+    octx.strokeStyle = hsl(hue + 8, sat, Math.min(96, lit + 12), alpha * 1.05);
+    octx.lineWidth = 1 + alpha * 1.1;
+    octx.shadowColor = hsl(hue + 8, sat, Math.min(96, lit + 12), 0.45);
+    octx.shadowBlur = 8;
+    octx.stroke();
+
     octx.restore();
   }
 
