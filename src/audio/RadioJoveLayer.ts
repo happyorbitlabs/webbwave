@@ -170,6 +170,8 @@ export class RadioJoveLayer {
   private _walkTimer: ReturnType<typeof setTimeout> | null = null;
   private _rand: () => number = seededRand(42);
   private _scanMode = false;
+  private _pulseAmount = 0.25;
+  private _evolveTimer: ReturnType<typeof setInterval> | null = null;
 
   connect(ctx: AudioContext, destination: AudioNode): void {
     // Master output — starts silent
@@ -248,6 +250,7 @@ export class RadioJoveLayer {
     }
 
     this._ready = true;
+    this._startEvolution();
   }
 
   // Called when a new JWST observation arrives
@@ -362,12 +365,25 @@ export class RadioJoveLayer {
   setPulse(value: number): void {
     if (!this.lfo || !this.lfoGain) return;
     const now = this.lfo.context.currentTime;
-    this.lfo.frequency.setTargetAtTime(0.003 + value * 0.147, now, 0.5);
-    this.lfoGain.gain.setTargetAtTime(0.005 + value * 0.045, now, 0.5);
+    this._pulseAmount = Math.max(0, Math.min(1, value));
+    this.lfo.frequency.setTargetAtTime(
+      0.003 + this._pulseAmount * 0.217,
+      now,
+      0.5,
+    );
+    this.lfoGain.gain.setTargetAtTime(
+      0.005 + this._pulseAmount * 0.08,
+      now,
+      0.5,
+    );
   }
 
   stop(): void {
     this._scanMode = false;
+    if (this._evolveTimer !== null) {
+      clearInterval(this._evolveTimer);
+      this._evolveTimer = null;
+    }
     this._clearWalkTimer();
     for (const el of Object.values(this.trackEls)) el?.pause();
     if (this.masterGain) {
@@ -453,5 +469,87 @@ export class RadioJoveLayer {
     });
     // Start the autonomous walk
     this._scheduleNextWalk();
+  }
+
+  private _startEvolution(): void {
+    if (this._evolveTimer || !this.masterGain) return;
+    this._evolveTimer = setInterval(() => {
+      if (!this.masterGain || !this._ready) return;
+      const now = this.masterGain.context.currentTime;
+      const e = 0.15 + this._pulseAmount * 0.85;
+
+      if (this.sourceLowpass) {
+        const baseCutoff = 450 * Math.pow(20000 / 450, this._level);
+        const nextCutoff = Math.max(
+          260,
+          Math.min(
+            22000,
+            baseCutoff * (1 + (Math.random() * 2 - 1) * (0.1 + e * 0.45)),
+          ),
+        );
+        this.sourceLowpass.frequency.setTargetAtTime(nextCutoff, now, 2.8);
+        this.sourceLowpass.Q.setTargetAtTime(
+          Math.max(
+            0.2,
+            Math.min(
+              2.0,
+              this.sourceLowpass.Q.value +
+                (Math.random() * 2 - 1) * (0.12 + e * 0.5),
+            ),
+          ),
+          now,
+          3.0,
+        );
+      }
+
+      if (this.reverbGain && this.dryGain) {
+        this.reverbGain.gain.setTargetAtTime(
+          Math.max(
+            0.2,
+            Math.min(
+              2.2,
+              this.reverbGain.gain.value +
+                (Math.random() * 2 - 1) * (0.05 + e * 0.25),
+            ),
+          ),
+          now,
+          3.2,
+        );
+        this.dryGain.gain.setTargetAtTime(
+          Math.max(
+            0.02,
+            Math.min(
+              0.45,
+              this.dryGain.gain.value +
+                (Math.random() * 2 - 1) * (0.02 + e * 0.08),
+            ),
+          ),
+          now,
+          3.2,
+        );
+      }
+
+      this.grainLines.forEach((g) => {
+        const nextRate = 0.04 + Math.random() * (0.14 + e * 0.32);
+        g.modOsc.frequency.setTargetAtTime(nextRate, now, 3.5);
+        const nextDepth = Math.max(
+          0.003,
+          Math.min(
+            0.06,
+            g.modGain.gain.value +
+              (Math.random() * 2 - 1) * (0.002 + e * 0.012),
+          ),
+        );
+        g.modGain.gain.setTargetAtTime(nextDepth, now, 3.5);
+        const nextFb = Math.max(
+          0.05,
+          Math.min(
+            0.9,
+            g.feedback.gain.value + (Math.random() * 2 - 1) * (0.03 + e * 0.1),
+          ),
+        );
+        g.feedback.gain.setTargetAtTime(nextFb, now, 3.2);
+      });
+    }, 6000);
   }
 }

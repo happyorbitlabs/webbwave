@@ -5,6 +5,9 @@ const RAMP_TIME_S = 4.0;
 
 // Base root frequency: A1 = 55 Hz
 const ROOT_HZ = 55;
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
 
 // Chord modes — interval sets in semitones above the root, voiced across ~3 octaves
 // 9 intervals, with two high "air" voices that can unfold over time.
@@ -144,6 +147,7 @@ export class AmbientEngine {
   private _chordMode = "MAJ";
   private _unfoldAmount = 0.25;
   private _evolveTimer: ReturnType<typeof setInterval> | null = null;
+  private _pulseAmount = 0.25;
 
   get isStarted(): boolean {
     return this._isStarted;
@@ -422,10 +426,11 @@ export class AmbientEngine {
   setPulse(value: number): void {
     if (!this.ctx || !this.lfo || !this.lfoGain) return;
     const now = this.ctx.currentTime;
-    // Rate: 0.003 Hz (almost still) → 0.15 Hz (noticeable pulse)
-    const rate = 0.003 + value * 0.147;
-    // Depth: ±0.005 (whisper) → ±0.05 (perceptible swell, never a full fade)
-    const depth = 0.005 + value * 0.045;
+    this._pulseAmount = clamp(value, 0, 1);
+    // Rate: 0.003 Hz (almost still) → 0.22 Hz (strong movement)
+    const rate = 0.003 + this._pulseAmount * 0.217;
+    // Depth: ±0.005 → ±0.09 (more dramatic breathing)
+    const depth = 0.005 + this._pulseAmount * 0.085;
     this.lfo.frequency.setTargetAtTime(rate, now, 0.5);
     this.lfoGain.gain.setTargetAtTime(depth, now, 0.5);
   }
@@ -497,16 +502,77 @@ export class AmbientEngine {
     this._evolveTimer = setInterval(() => {
       if (!this.ctx || !this._isStarted) return;
       const now = this.ctx.currentTime;
+      const e = 0.15 + this._pulseAmount * 0.85;
       // Random-walk unfold for upper chord voices.
-      const step = (Math.random() * 2 - 1) * 0.18;
-      this._unfoldAmount = Math.max(0, Math.min(1, this._unfoldAmount + step));
+      const step = (Math.random() * 2 - 1) * (0.12 + e * 0.34);
+      this._unfoldAmount = clamp(this._unfoldAmount + step, 0, 1);
+
+      // Slow movement over timbre + space.
+      if (this.filter) {
+        const baseHz =
+          this.cutoffOverride !== null
+            ? 120 * Math.pow(4000 / 120, this.cutoffOverride)
+            : this.filter.frequency.value;
+        const hz = clamp(
+          baseHz * (1 + (Math.random() * 2 - 1) * (0.12 + e * 0.45)),
+          140,
+          5500,
+        );
+        this.filter.frequency.setTargetAtTime(hz, now, 2.8);
+        const q = clamp(
+          this.filter.Q.value + (Math.random() * 2 - 1) * (0.2 + e * 1.4),
+          0.3,
+          8.0,
+        );
+        this.filter.Q.setTargetAtTime(q, now, 3.2);
+      }
+
+      if (this.reverbGain && this.dryGain) {
+        const wetBase = 0.32 + this.blend * 1.15;
+        const dryBase = Math.max(0.08, 0.3 - this.blend * 0.16);
+        const wet = clamp(
+          wetBase + (Math.random() * 2 - 1) * (0.08 + e * 0.35),
+          0.15,
+          2.2,
+        );
+        const dry = clamp(
+          dryBase + (Math.random() * 2 - 1) * (0.04 + e * 0.14),
+          0.03,
+          0.5,
+        );
+        this.reverbGain.gain.setTargetAtTime(wet, now, 3.5);
+        this.dryGain.gain.setTargetAtTime(dry, now, 3.5);
+      }
+
       // Slow drift in grain motion keeps texture alive.
       this.grainLines.forEach((g) => {
-        const nextRate = 0.04 + Math.random() * 0.18;
+        const nextRate = 0.03 + Math.random() * (0.12 + e * 0.33);
         g.modOsc.frequency.setTargetAtTime(nextRate, now, 3.5);
+        const nextDepth = clamp(
+          g.modGain.gain.value + (Math.random() * 2 - 1) * (0.002 + e * 0.014),
+          0.003,
+          0.06,
+        );
+        g.modGain.gain.setTargetAtTime(nextDepth, now, 3.5);
+        const nextFb = clamp(
+          g.feedback.gain.value + (Math.random() * 2 - 1) * (0.03 + e * 0.12),
+          0.08,
+          0.9,
+        );
+        g.feedback.gain.setTargetAtTime(nextFb, now, 3.2);
       });
+
+      this.voices.forEach((v) => {
+        const nextDrift = clamp(
+          v.driftGain.gain.value + (Math.random() * 2 - 1) * (0.8 + e * 6.0),
+          0.8,
+          24,
+        );
+        v.driftGain.gain.setTargetAtTime(nextDrift, now, 4.5);
+      });
+
       this._applyZoom(this._zoomNorm);
-    }, 7000);
+    }, 5000);
   }
 
   // Legacy stubs kept so TypeScript doesn't error if called elsewhere
