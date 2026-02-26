@@ -1,272 +1,292 @@
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-:root {
-  --col-bg:        #02020D;
-  --col-teal:      #00AACC;
-  --col-purple:    #6633AA;
-  --col-text:      #DDEEFF;
-  --col-text-dim:  #7799AA;
-  --col-border:    #224455;
-  --font-mono:     'Courier New', 'Courier', monospace;
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
 }
 
-html, body {
-  width: 100%; height: 100%;
-  overflow: hidden;
-  background: var(--col-bg);
-  color: var(--col-text);
-  font-family: var(--font-mono);
+:root {
+    --col-bg: #02020d;
+    --col-teal: #00aacc;
+    --col-purple: #6633aa;
+    --col-text: #ddeeff;
+    --col-text-dim: #7799aa;
+    --col-border: #224455;
+    --font-mono: "Courier New", "Courier", monospace;
+}
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--col-bg);
+    color: var(--col-text);
+    font-family: var(--font-mono);
 }
 
 #app {
-  position: relative;
-  width: 100vw; height: 100vh;
+    position: relative;
+    width: 100vw;
+    height: 100vh;
 }
 
 #generative-canvas {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  /* CSS scales the 50%-resolution canvas up to fill the viewport.
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    /* CSS scales the 50%-resolution canvas up to fill the viewport.
      Browser bilinear-interpolates, giving a soft painterly look. */
-  width: 100%;
-  height: 100%;
-  image-rendering: auto;
-  display: block;
-  will-change: contents;
+    width: 100%;
+    height: 100%;
+    image-rendering: auto;
+    display: block;
+    will-change: contents;
 }
 
 #space-canvas {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: block;
-  cursor: crosshair;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: block;
+    cursor: crosshair;
 }
 
 #space-canvas.aiming {
-  cursor: none;
+    cursor: none;
 }
 
 /* Info overlay — bottom left */
 #info-overlay {
-  position: absolute;
-  bottom: 24px;
-  left: 24px;
-  z-index: 10;
-  min-width: 260px;
-  padding: 14px 16px;
-  background: rgba(2, 2, 13, 0.6);
-  border: 0.5px solid rgba(0, 170, 204, 0.4);
-  border-radius: 6px;
-  opacity: 0.45;
-  transition: opacity 0.6s ease;
-  pointer-events: none;
-  backdrop-filter: blur(4px);
+    position: absolute;
+    bottom: 24px;
+    left: 24px;
+    z-index: 10;
+    min-width: 260px;
+    padding: 14px 16px;
+    background: rgba(2, 2, 13, 0.6);
+    border: 0.5px solid rgba(0, 170, 204, 0.4);
+    border-radius: 6px;
+    opacity: 0.45;
+    transition: opacity 0.6s ease;
+    pointer-events: none;
+    backdrop-filter: blur(4px);
 }
 
 .info-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  font-size: 11px;
-  line-height: 1.9;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 11px;
+    line-height: 1.9;
 }
 
 .info-label {
-  color: var(--col-text-dim);
-  letter-spacing: 0.08em;
-  flex-shrink: 0;
+    color: var(--col-text-dim);
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
 }
 
 .info-value {
-  color: var(--col-text);
-  text-align: right;
-  word-break: break-word;
+    color: var(--col-text);
+    text-align: right;
+    word-break: break-word;
 }
 
-.info-dim { color: var(--col-text-dim); }
+.info-dim {
+    color: var(--col-text-dim);
+}
 
 /* Controls — bottom right */
 #controls {
-  position: absolute;
-  bottom: 24px;
-  right: 24px;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 20px;
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 20px;
 }
 
 .knob-group {
-  display: flex;
-  gap: 24px;
-  align-items: flex-end;
+    display: flex;
+    gap: 24px;
+    align-items: flex-end;
 }
 
 .knob-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
 }
 
 .knob-label {
-  font-size: 9px;
-  letter-spacing: 0.18em;
-  color: var(--col-text-dim);
-  opacity: 0.55;
-  writing-mode: horizontal-tb;
-  transition: opacity 0.3s, color 0.3s;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--col-text-dim);
+    opacity: 0.55;
+    writing-mode: horizontal-tb;
+    transition:
+        opacity 0.3s,
+        color 0.3s;
 }
 
 .knob-wrap:hover .knob-label {
-  opacity: 1;
-  color: var(--col-teal);
+    opacity: 1;
+    color: var(--col-teal);
 }
 
 /* ── Vertical sliders ──────────────────────────────────────────────────────── */
 
 input[type="range"] {
-  -webkit-appearance: none;
-  appearance: none;
-  writing-mode: vertical-lr;
-  direction: rtl;
-  width: 2px;
-  height: 120px;
-  background: transparent;
-  outline: none;
-  cursor: pointer;
-  position: relative;
+    -webkit-appearance: none;
+    appearance: none;
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 2px;
+    height: 120px;
+    background: transparent;
+    outline: none;
+    cursor: pointer;
+    position: relative;
 }
 
 /* Track — webkit */
 input[type="range"]::-webkit-slider-runnable-track {
-  width: 2px;
-  background: linear-gradient(
-    to bottom,
-    rgba(0, 170, 204, 0.06) 0%,
-    rgba(0, 170, 204, 0.18) 100%
-  );
-  border-radius: 1px;
-  box-shadow:
-    0 0 6px rgba(0, 170, 204, 0.12),
-    0 0 1px rgba(0, 170, 204, 0.5);
+    width: 2px;
+    background: linear-gradient(
+        to bottom,
+        rgba(0, 170, 204, 0.06) 0%,
+        rgba(0, 170, 204, 0.18) 100%
+    );
+    border-radius: 1px;
+    box-shadow:
+        0 0 6px rgba(0, 170, 204, 0.12),
+        0 0 1px rgba(0, 170, 204, 0.5);
 }
 
 /* Track — firefox */
 input[type="range"]::-moz-range-track {
-  width: 2px;
-  background: linear-gradient(
-    to bottom,
-    rgba(0, 170, 204, 0.06) 0%,
-    rgba(0, 170, 204, 0.18) 100%
-  );
-  border-radius: 1px;
-  box-shadow:
-    0 0 6px rgba(0, 170, 204, 0.12),
-    0 0 1px rgba(0, 170, 204, 0.5);
+    width: 2px;
+    background: linear-gradient(
+        to bottom,
+        rgba(0, 170, 204, 0.06) 0%,
+        rgba(0, 170, 204, 0.18) 100%
+    );
+    border-radius: 1px;
+    box-shadow:
+        0 0 6px rgba(0, 170, 204, 0.12),
+        0 0 1px rgba(0, 170, 204, 0.5);
 }
 
 /* Thumb — webkit: horizontal elongated pill, rotated to cross the track */
 input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 18px;
-  height: 3px;
-  border-radius: 1px;
-  background: var(--col-teal);
-  box-shadow:
-    0 0 8px  var(--col-teal),
-    0 0 20px rgba(0, 170, 204, 0.4),
-    0 0 40px rgba(0, 170, 204, 0.1);
-  cursor: pointer;
-  transition: box-shadow 0.2s, background 0.2s;
+    -webkit-appearance: none;
+    width: 18px;
+    height: 3px;
+    border-radius: 1px;
+    background: var(--col-teal);
+    box-shadow:
+        0 0 8px var(--col-teal),
+        0 0 20px rgba(0, 170, 204, 0.4),
+        0 0 40px rgba(0, 170, 204, 0.1);
+    cursor: pointer;
+    transition:
+        box-shadow 0.2s,
+        background 0.2s;
 }
 
 input[type="range"]:hover::-webkit-slider-thumb,
 input[type="range"]:active::-webkit-slider-thumb {
-  background: #33CCEE;
-  box-shadow:
-    0 0 12px #00AACC,
-    0 0 30px rgba(0, 170, 204, 0.6),
-    0 0 60px rgba(0, 170, 204, 0.2);
+    background: #33ccee;
+    box-shadow:
+        0 0 12px #00aacc,
+        0 0 30px rgba(0, 170, 204, 0.6),
+        0 0 60px rgba(0, 170, 204, 0.2);
 }
 
 /* Thumb — firefox */
 input[type="range"]::-moz-range-thumb {
-  width: 18px;
-  height: 3px;
-  border-radius: 1px;
-  border: none;
-  background: var(--col-teal);
-  box-shadow:
-    0 0 8px  var(--col-teal),
-    0 0 20px rgba(0, 170, 204, 0.4);
-  cursor: pointer;
+    width: 18px;
+    height: 3px;
+    border-radius: 1px;
+    border: none;
+    background: var(--col-teal);
+    box-shadow:
+        0 0 8px var(--col-teal),
+        0 0 20px rgba(0, 170, 204, 0.4);
+    cursor: pointer;
 }
 
 /* ── Chord picker (piano + mode row) ───────────────────────────────────────── */
 
 .chord-picker {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  opacity: 0.5;
-  transition: opacity 0.3s;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    opacity: 0.5;
+    transition: opacity 0.3s;
 }
 
 .chord-picker:hover {
-  opacity: 1;
+    opacity: 1;
 }
 
 /* Piano wrapper — positions white and black rows on top of each other */
 .piano {
-  position: relative;
-  width: 161px;   /* 7 white keys × 23px */
-  height: 48px;
-  user-select: none;
+    position: relative;
+    width: 161px; /* 7 white keys × 23px */
+    height: 48px;
+    user-select: none;
 }
 
 /* White key row — flex, full width */
 .piano-white-row {
-  display: flex;
-  gap: 1px;
-  width: 100%;
-  height: 100%;
+    display: flex;
+    gap: 1px;
+    width: 100%;
+    height: 100%;
 }
 
 .pkey.white {
-  flex: 1;
-  height: 100%;
-  background: rgba(180, 210, 220, 0.08);
-  border: 0.5px solid rgba(0, 170, 204, 0.25);
-  border-radius: 0 0 2px 2px;
-  cursor: pointer;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: 3px;
-  font-family: var(--font-mono);
-  font-size: 7px;
-  letter-spacing: 0.04em;
-  color: rgba(0, 170, 204, 0.35);
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-  position: relative;
+    flex: 1;
+    height: 100%;
+    background: rgba(180, 210, 220, 0.08);
+    border: 0.5px solid rgba(0, 170, 204, 0.25);
+    border-radius: 0 0 2px 2px;
+    cursor: pointer;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 3px;
+    font-family: var(--font-mono);
+    font-size: 7px;
+    letter-spacing: 0.04em;
+    color: rgba(0, 170, 204, 0.35);
+    transition:
+        background 0.15s,
+        border-color 0.15s,
+        color 0.15s;
+    position: relative;
 }
 
 .pkey.white:hover {
-  background: rgba(0, 170, 204, 0.12);
-  border-color: rgba(0, 170, 204, 0.5);
-  color: rgba(0, 170, 204, 0.7);
+    background: rgba(0, 170, 204, 0.12);
+    border-color: rgba(0, 170, 204, 0.5);
+    color: rgba(0, 170, 204, 0.7);
 }
 
 .pkey.white.active {
-  background: rgba(0, 170, 204, 0.18);
-  border-color: var(--col-teal);
-  color: var(--col-teal);
-  box-shadow: 0 0 10px rgba(0, 170, 204, 0.3), inset 0 0 8px rgba(0, 170, 204, 0.1);
+    background: rgba(0, 170, 204, 0.18);
+    border-color: var(--col-teal);
+    color: var(--col-teal);
+    box-shadow:
+        0 0 10px rgba(0, 170, 204, 0.3),
+        inset 0 0 8px rgba(0, 170, 204, 0.1);
 }
 
 /* Black key row — absolute, overlaid on top half of white keys.
@@ -279,280 +299,378 @@ input[type="range"]::-moz-range-thumb {
      G# → after white[4] G  : offset = 5 * 23 - 7   = 108
      A# → after white[5] A  : offset = 6 * 23 - 7   = 131          */
 .piano-black-row {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 58%;
-  pointer-events: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 58%;
+    pointer-events: none;
 }
 
 .pkey.black {
-  position: absolute;
-  width: 14px;
-  height: 100%;
-  background: rgba(2, 2, 13, 0.88);
-  border: 0.5px solid rgba(0, 170, 204, 0.35);
-  border-top: none;
-  border-radius: 0 0 2px 2px;
-  cursor: pointer;
-  pointer-events: auto;
-  transition: background 0.15s, box-shadow 0.15s;
+    position: absolute;
+    width: 14px;
+    height: 100%;
+    background: rgba(2, 2, 13, 0.88);
+    border: 0.5px solid rgba(0, 170, 204, 0.35);
+    border-top: none;
+    border-radius: 0 0 2px 2px;
+    cursor: pointer;
+    pointer-events: auto;
+    transition:
+        background 0.15s,
+        box-shadow 0.15s;
 }
 
 /* Position each black key by its --col CSS custom property (1-indexed column) */
-.pkey.black[data-note="C♯"] { left: 16px;  }
-.pkey.black[data-note="D♯"] { left: 39px;  }
-.pkey.black[data-note="F♯"] { left: 85px;  }
-.pkey.black[data-note="G♯"] { left: 108px; }
-.pkey.black[data-note="A♯"] { left: 131px; }
+.pkey.black[data-note="C♯"] {
+    left: 16px;
+}
+.pkey.black[data-note="D♯"] {
+    left: 39px;
+}
+.pkey.black[data-note="F♯"] {
+    left: 85px;
+}
+.pkey.black[data-note="G♯"] {
+    left: 108px;
+}
+.pkey.black[data-note="A♯"] {
+    left: 131px;
+}
 
 .pkey.black:hover {
-  background: rgba(0, 170, 204, 0.18);
-  box-shadow: 0 0 8px rgba(0, 170, 204, 0.3);
+    background: rgba(0, 170, 204, 0.18);
+    box-shadow: 0 0 8px rgba(0, 170, 204, 0.3);
 }
 
 .pkey.black.active {
-  background: rgba(0, 170, 204, 0.28);
-  border-color: var(--col-teal);
-  box-shadow: 0 0 14px rgba(0, 170, 204, 0.5);
+    background: rgba(0, 170, 204, 0.28);
+    border-color: var(--col-teal);
+    box-shadow: 0 0 14px rgba(0, 170, 204, 0.5);
 }
 
 /* Mode row */
 .mode-row {
-  display: flex;
-  gap: 4px;
+    display: flex;
+    gap: 4px;
 }
 
 .mode-btn {
-  background: transparent;
-  border: 0.5px solid rgba(0, 170, 204, 0.2);
-  border-radius: 2px;
-  padding: 3px 6px;
-  font-family: var(--font-mono);
-  font-size: 8px;
-  letter-spacing: 0.1em;
-  color: var(--col-text-dim);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+    background: transparent;
+    border: 0.5px solid rgba(0, 170, 204, 0.2);
+    border-radius: 2px;
+    padding: 3px 6px;
+    font-family: var(--font-mono);
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    color: var(--col-text-dim);
+    cursor: pointer;
+    transition:
+        background 0.15s,
+        border-color 0.15s,
+        color 0.15s;
 }
 
 .mode-btn:hover {
-  border-color: rgba(0, 170, 204, 0.5);
-  color: var(--col-text);
+    border-color: rgba(0, 170, 204, 0.5);
+    color: var(--col-text);
 }
 
 .mode-btn.active {
-  background: rgba(0, 170, 204, 0.12);
-  border-color: var(--col-teal);
-  color: var(--col-teal);
-  box-shadow: 0 0 8px rgba(0, 170, 204, 0.2);
+    background: rgba(0, 170, 204, 0.12);
+    border-color: var(--col-teal);
+    color: var(--col-teal);
+    box-shadow: 0 0 8px rgba(0, 170, 204, 0.2);
 }
 
 /* Start button */
 #start-btn {
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 10;
-  padding: 14px 36px;
-  background: transparent;
-  border: 1px solid var(--col-teal);
-  border-radius: 4px;
-  color: var(--col-teal);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  letter-spacing: 0.15em;
-  cursor: pointer;
-  transition: background 0.3s, box-shadow 0.3s, opacity 0.5s;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    padding: 14px 36px;
+    background: transparent;
+    border: 1px solid var(--col-teal);
+    border-radius: 4px;
+    color: var(--col-teal);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: 0.15em;
+    cursor: pointer;
+    transition:
+        background 0.3s,
+        box-shadow 0.3s,
+        opacity 0.5s;
 }
 
 #start-btn:hover {
-  background: rgba(0, 170, 204, 0.1);
-  box-shadow: 0 0 20px rgba(0, 170, 204, 0.3);
+    background: rgba(0, 170, 204, 0.1);
+    box-shadow: 0 0 20px rgba(0, 170, 204, 0.3);
 }
 
 #start-btn.hidden {
-  opacity: 0;
-  pointer-events: none;
+    opacity: 0;
+    pointer-events: none;
 }
 
 #start-btn.stop-mode {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  top: auto;
-  transform: translateX(-50%);
-  padding: 6px 20px;
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  border-color: rgba(0, 170, 204, 0.35);
-  color: var(--col-text-dim);
-  opacity: 0.5;
-  transition: opacity 0.3s, border-color 0.3s, color 0.3s;
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    top: auto;
+    transform: translateX(-50%);
+    padding: 6px 20px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    border-color: rgba(0, 170, 204, 0.35);
+    color: var(--col-text-dim);
+    opacity: 0.5;
+    transition:
+        opacity 0.3s,
+        border-color 0.3s,
+        color 0.3s;
 }
 
 #start-btn.stop-mode:hover {
-  opacity: 1;
-  border-color: rgba(0, 170, 204, 0.7);
-  color: var(--col-teal);
-  background: rgba(0, 170, 204, 0.08);
-  box-shadow: none;
+    opacity: 1;
+    border-color: rgba(0, 170, 204, 0.7);
+    color: var(--col-teal);
+    background: rgba(0, 170, 204, 0.08);
+    box-shadow: none;
 }
 
 /* Status badge — top center */
 #status {
-  position: absolute;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  color: var(--col-text-dim);
-  opacity: 0;
-  transition: opacity 0.5s;
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--col-text-dim);
+    opacity: 0;
+    transition: opacity 0.5s;
 }
 
-#status.visible { opacity: 0.6; }
+#status.visible {
+    opacity: 0.6;
+}
 
 /* JWST badge — top left */
 #badge {
-  position: absolute;
-  top: 20px;
-  left: 24px;
-  z-index: 10;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--col-text-dim);
-  opacity: 0.5;
+    position: absolute;
+    top: 20px;
+    left: 24px;
+    z-index: 10;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--col-text-dim);
+    opacity: 0.5;
 }
 
 #badge span {
-  color: var(--col-teal);
-  opacity: 0.9;
+    color: var(--col-teal);
+    opacity: 0.9;
 }
 
 /* ── Info panel toggle button — top right ──────────────────────────────────── */
 
 #info-btn {
-  position: absolute;
-  top: 16px;
-  right: 24px;
-  z-index: 20;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  background: transparent;
-  border: 0.5px solid rgba(0, 170, 204, 0.4);
-  border-radius: 50%;
-  color: var(--col-text-dim);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.25s, border-color 0.25s, color 0.25s, box-shadow 0.25s;
+    position: absolute;
+    top: 16px;
+    right: 24px;
+    z-index: 20;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: 0.5px solid rgba(0, 170, 204, 0.4);
+    border-radius: 50%;
+    color: var(--col-text-dim);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    cursor: pointer;
+    transition:
+        background 0.25s,
+        border-color 0.25s,
+        color 0.25s,
+        box-shadow 0.25s;
 }
 
 #info-btn:hover,
 #info-btn.active {
-  background: rgba(0, 170, 204, 0.1);
-  border-color: rgba(0, 170, 204, 0.8);
-  color: var(--col-teal);
-  box-shadow: 0 0 14px rgba(0, 170, 204, 0.25);
+    background: rgba(0, 170, 204, 0.1);
+    border-color: rgba(0, 170, 204, 0.8);
+    color: var(--col-teal);
+    box-shadow: 0 0 14px rgba(0, 170, 204, 0.25);
 }
 
 /* ── Info panel ─────────────────────────────────────────────────────────────── */
 
 /* Full-screen backdrop layer — sits above canvas, below UI chrome */
 #info-panel {
-  position: absolute;
-  inset: 0;
-  z-index: 15;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  padding: 60px 24px 24px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  background: rgba(2, 2, 13, 0.50);
-  backdrop-filter: blur(2px);
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 60px 24px 24px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    background: rgba(2, 2, 13, 0.5);
+    backdrop-filter: blur(2px);
 }
 
 #info-panel.open {
-  pointer-events: auto;
-  opacity: 1;
+    pointer-events: auto;
+    opacity: 1;
 }
 
 /* Card — direct child div rendered by InfoPanel.ts */
 #info-panel > div {
-  position: relative;
-  width: 380px;
-  max-width: calc(100vw - 48px);
-  max-height: calc(100vh - 80px);
-  display: flex;
-  flex-direction: column;
-  background: rgba(2, 2, 13, 0.88);
-  border: 0.5px solid rgba(0, 170, 204, 0.35);
-  border-radius: 6px;
-  backdrop-filter: blur(8px);
-  overflow: hidden;
+    position: relative;
+    width: 380px;
+    max-width: calc(100vw - 48px);
+    max-height: calc(100vh - 80px);
+    display: flex;
+    flex-direction: column;
+    background: rgba(2, 2, 13, 0.88);
+    border: 0.5px solid rgba(0, 170, 204, 0.35);
+    border-radius: 6px;
+    backdrop-filter: blur(8px);
+    overflow: hidden;
 }
 
 /* Body */
 .ip-body {
-  overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 170, 204, 0.3) transparent;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 170, 204, 0.3) transparent;
 }
 
-.ip-body::-webkit-scrollbar { width: 4px; }
-.ip-body::-webkit-scrollbar-track { background: transparent; }
-.ip-body::-webkit-scrollbar-thumb { background: rgba(0, 170, 204, 0.3); border-radius: 2px; }
+.ip-body::-webkit-scrollbar {
+    width: 4px;
+}
+.ip-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+.ip-body::-webkit-scrollbar-thumb {
+    background: rgba(0, 170, 204, 0.3);
+    border-radius: 2px;
+}
 
 /* Lead paragraph */
 .ip-lead {
-  font-size: 11px;
-  line-height: 1.8;
-  color: var(--col-text);
-  opacity: 0.75;
+    font-size: 11px;
+    line-height: 1.8;
+    color: var(--col-text);
+    opacity: 0.75;
 }
 
 /* Sections */
 .ip-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .ip-section-title {
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  color: var(--col-teal);
-  opacity: 0.7;
-  margin-bottom: 4px;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    color: var(--col-teal);
+    opacity: 0.7;
+    margin-bottom: 4px;
 }
 
 .ip-row {
-  display: flex;
-  gap: 12px;
-  font-size: 10px;
-  line-height: 1.7;
+    display: flex;
+    gap: 12px;
+    font-size: 10px;
+    line-height: 1.7;
 }
 
 .ip-label {
-  color: var(--col-text-dim);
-  letter-spacing: 0.06em;
-  flex-shrink: 0;
-  width: 88px;
-  padding-top: 1px;
+    color: var(--col-text-dim);
+    letter-spacing: 0.06em;
+    flex-shrink: 0;
+    width: 88px;
+    padding-top: 1px;
 }
 
 .ip-value {
-  color: var(--col-text);
-  opacity: 0.8;
+    color: var(--col-text);
+    opacity: 0.8;
+}
+
+/* Small screens: hide the bottom-left live info overlay */
+@media (max-width: 900px), (max-height: 700px) {
+    #info-overlay {
+        display: none;
+    }
+
+    /* Keep only STOP at the top on small screens */
+    #status,
+    #badge {
+        display: none;
+    }
+
+    #start-btn.stop-mode {
+        top: 12px;
+        bottom: auto;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 25;
+        padding: 6px 16px;
+    }
+
+    /* Compact control layout so all sliders fit on one row */
+    #controls {
+        left: 10px;
+        right: 10px;
+        bottom: 14px;
+        width: min(100%, 420px);
+        max-width: 420px;
+        margin-left: auto;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .knob-group {
+        width: 100%;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: flex-end;
+    }
+
+    .knob-wrap {
+        gap: 6px;
+        min-width: 0;
+    }
+
+    .knob-label {
+        font-size: 8px;
+        letter-spacing: 0.1em;
+    }
+
+    input[type="range"] {
+        height: 86px;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+        width: 14px;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+        width: 14px;
+    }
 }

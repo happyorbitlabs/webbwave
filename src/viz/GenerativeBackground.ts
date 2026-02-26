@@ -535,7 +535,7 @@ export class GenerativeBackground {
 
     for (const obj of scene.objects) {
       const glowPulse = 0.7 + 0.3 * Math.sin(tSec * 0.04 + obj.phase);
-      const driftSpeed = obj.kind === "arc" ? 0.045 : 0.02;
+      const driftSpeed = obj.kind === "arc" ? 0.028 : 0.02;
       const driftRadius = obj.kind === "arc" ? 5 : 3;
       const driftX = Math.sin(tSec * driftSpeed + obj.phase) * driftRadius;
       const driftY =
@@ -737,21 +737,21 @@ export class GenerativeBackground {
     tSec: number,
     phase: number,
   ): void {
-    const breath = 1 + Math.sin(tSec * 0.35 + phase) * 0.04;
+    const breath = 1 + Math.sin(tSec * 0.22 + phase) * 0.04;
     const arcRx = Math.max(1, rx * breath);
     const arcRy = Math.max(1, ry * breath);
-    const arcStart = Math.PI * (0.22 + 0.05 * Math.sin(tSec * 0.12 + phase));
+    const arcStart = Math.PI * (0.22 + 0.05 * Math.sin(tSec * 0.075 + phase));
     const arcSweep =
-      Math.PI * (0.82 + 0.12 * Math.sin(tSec * 0.09 + phase * 0.7));
+      Math.PI * (0.82 + 0.12 * Math.sin(tSec * 0.055 + phase * 0.7));
     const arcEnd = arcStart + arcSweep;
 
     octx.save();
     octx.translate(cx, cy);
-    octx.rotate(angle + Math.sin(tSec * 0.05 + phase) * 0.05);
+    octx.rotate(angle + Math.sin(tSec * 0.03 + phase) * 0.05);
 
     // Base arc path with a subtle flowing dash animation.
     octx.setLineDash([Math.max(8, arcRx * 0.2), Math.max(6, arcRx * 0.12)]);
-    octx.lineDashOffset = -(tSec * 8 + phase * 20);
+    octx.lineDashOffset = -(tSec * 4.5 + phase * 20);
     octx.beginPath();
     octx.ellipse(0, 0, arcRx, arcRy, 0, arcStart, arcEnd);
     octx.strokeStyle = hsl(hue, sat, lit, alpha * 0.75);
@@ -761,16 +761,16 @@ export class GenerativeBackground {
     octx.stroke();
 
     // Traveling highlight segment to make lensing paths feel alive.
-    const segmentT = (Math.sin(tSec * 0.22 + phase) + 1) * 0.5;
+    const segmentT = (Math.sin(tSec * 0.12 + phase) + 1) * 0.5;
     const segmentStart = arcStart + arcSweep * segmentT;
     const segmentEnd = Math.min(arcEnd, segmentStart + arcSweep * 0.15);
     octx.setLineDash([]);
     octx.beginPath();
     octx.ellipse(0, 0, arcRx, arcRy, 0, segmentStart, segmentEnd);
-    octx.strokeStyle = hsl(hue + 8, sat, Math.min(96, lit + 12), alpha * 1.05);
-    octx.lineWidth = 1 + alpha * 1.1;
-    octx.shadowColor = hsl(hue + 8, sat, Math.min(96, lit + 12), 0.45);
-    octx.shadowBlur = 8;
+    octx.strokeStyle = hsl(hue + 10, sat, Math.min(98, lit + 16), alpha * 1.18);
+    octx.lineWidth = 1.1 + alpha * 1.2;
+    octx.shadowColor = hsl(hue + 10, sat, Math.min(98, lit + 16), 0.6);
+    octx.shadowBlur = 10;
     octx.stroke();
 
     octx.restore();
