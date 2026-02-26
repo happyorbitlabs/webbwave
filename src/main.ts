@@ -22,6 +22,17 @@ startBtn.id = "start-btn";
 startBtn.textContent = "▶  START LISTENING";
 document.getElementById("app")!.appendChild(startBtn);
 
+const isiOSLike =
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let iosHeadphonesTip: HTMLDivElement | null = null;
+if (isiOSLike) {
+  iosHeadphonesTip = document.createElement("div");
+  iosHeadphonesTip.id = "ios-headphones-tip";
+  iosHeadphonesTip.textContent = "HEADPHONES RECOMMENDED";
+  document.getElementById("app")!.appendChild(iosHeadphonesTip);
+}
+
 // Status badge
 const status = document.createElement("div");
 status.id = "status";
@@ -431,6 +442,7 @@ requestAnimationFrame(tick);
 
 async function startAudio() {
   startBtn.classList.add("hidden");
+  iosHeadphonesTip?.classList.add("hidden");
 
   // Web Audio requires user gesture — create context here
   const audioCtx = new AudioContext();
@@ -486,6 +498,7 @@ function stopAudio() {
   status.classList.remove("visible");
   startBtn.textContent = "▶  START LISTENING";
   startBtn.classList.remove("stop-mode");
+  iosHeadphonesTip?.classList.remove("hidden");
 }
 
 startBtn.addEventListener("click", () => {
