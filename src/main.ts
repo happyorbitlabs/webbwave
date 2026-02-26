@@ -45,6 +45,21 @@ badge.id = "badge";
 badge.innerHTML = "WEBBWAVE";
 document.getElementById("app")!.appendChild(badge);
 
+const builtBy = document.createElement("a");
+builtBy.id = "built-by";
+builtBy.href = "https://www.happyorbitlabs.com/";
+builtBy.target = "_blank";
+builtBy.rel = "noopener noreferrer";
+builtBy.textContent = "Built by Happy Orbit Labs";
+document.getElementById("app")!.appendChild(builtBy);
+
+const autopilotBtn = document.createElement("button");
+autopilotBtn.id = "autopilot-btn";
+autopilotBtn.textContent = "AUTO";
+autopilotBtn.setAttribute("aria-label", "Toggle Autopilot");
+autopilotBtn.setAttribute("aria-pressed", "false");
+document.getElementById("app")!.appendChild(autopilotBtn);
+
 // Controls panel
 const controls = document.createElement("div");
 controls.id = "controls";
@@ -59,7 +74,7 @@ controls.innerHTML = `
       <div class="knob-label">SPACE</div>
     </div>
     <div class="knob-wrap">
-      <input type="range" id="colour-slider" min="0" max="100" value="40" />
+      <input type="range" id="colour-slider" min="0" max="100" value="55" />
       <div class="knob-label">COLOUR</div>
     </div>
     <div class="knob-wrap">
@@ -71,7 +86,7 @@ controls.innerHTML = `
       <div class="knob-label">PULSE</div>
     </div>
     <div class="knob-wrap">
-      <input type="range" id="signal-slider" min="0" max="100" value="0" />
+      <input type="range" id="signal-slider" min="0" max="100" value="12" />
       <div class="knob-label">SIGNAL</div>
     </div>
   </div>
@@ -222,6 +237,114 @@ let lastLiveStatus = "LIVE · JAMES WEBB SPACE TELESCOPE";
 let lastObservation: ObservationData = DEFAULT_OBSERVATION;
 const recentObservations: ObservationData[] = [DEFAULT_OBSERVATION];
 let aimedObservation: ObservationData | null = null;
+let autopilotActive = false;
+let autopilotPaused = false;
+let autopilotRaf: number | null = null;
+let autopilotResumeTimer: ReturnType<typeof setTimeout> | null = null;
+let autopilotZoom = 1.0;
+let autopilotArmTimer: ReturnType<typeof setTimeout> | null = null;
+let userInteractedEarly = false;
+
+function setAutopilotState(active: boolean): void {
+  autopilotBtn.classList.toggle("active", active);
+  autopilotBtn.setAttribute("aria-pressed", active ? "true" : "false");
+}
+
+function runAutopilotFrame(timeMs: number): void {
+  if (!autopilotActive || autopilotPaused) return;
+  const t = timeMs / 1000;
+  const nx = Math.max(
+    0,
+    Math.min(
+      1,
+      0.5 + Math.sin(t * 0.11) * 0.38 + Math.sin(t * 0.047 + 1.3) * 0.15,
+    ),
+  );
+  const ny = Math.max(
+    0,
+    Math.min(
+      1,
+      0.5 + Math.cos(t * 0.083 + 0.8) * 0.3 + Math.sin(t * 0.031 + 2.1) * 0.2,
+    ),
+  );
+  onAimMove(nx * window.innerWidth, ny * window.innerHeight);
+  const targetZoom = clampZoom(
+    1.0 + Math.sin(t * 0.038) * 0.55 + Math.sin(t * 0.017 + 0.9) * 0.2,
+  );
+  autopilotZoom += (targetZoom - autopilotZoom) * 0.045;
+  applyZoom(autopilotZoom);
+  autopilotRaf = requestAnimationFrame(runAutopilotFrame);
+}
+
+function startAutopilot(): void {
+  if (autopilotActive) return;
+  autopilotActive = true;
+  autopilotPaused = false;
+  autopilotZoom = zoomLevel;
+  setAutopilotState(true);
+  signalLayer.beginScan();
+  if (autopilotRaf !== null) cancelAnimationFrame(autopilotRaf);
+  autopilotRaf = requestAnimationFrame(runAutopilotFrame);
+}
+
+function stopAutopilot(): void {
+  autopilotActive = false;
+  autopilotPaused = false;
+  setAutopilotState(false);
+  if (autopilotRaf !== null) {
+    cancelAnimationFrame(autopilotRaf);
+    autopilotRaf = null;
+  }
+  if (autopilotResumeTimer !== null) {
+    clearTimeout(autopilotResumeTimer);
+    autopilotResumeTimer = null;
+  }
+  renderer.setAimPoint(null, null);
+  signalLayer.endScan();
+  signalLayer.setObservation(lastObservation);
+  if (!aimActive) {
+    status.textContent = lastLiveStatus;
+    renderer.setObservation(lastObservation);
+    generativeBg.setObservation(lastObservation);
+    overlay.resetCoords(lastObservation.ra, lastObservation.dec);
+  }
+}
+
+function pauseAutopilotForInteraction(): void {
+  if (!autopilotActive || autopilotPaused) return;
+  autopilotPaused = true;
+  if (autopilotRaf !== null) {
+    cancelAnimationFrame(autopilotRaf);
+    autopilotRaf = null;
+  }
+}
+
+function scheduleAutopilotResume(delayMs = 2200): void {
+  if (!autopilotActive) return;
+  if (autopilotResumeTimer !== null) clearTimeout(autopilotResumeTimer);
+  autopilotResumeTimer = setTimeout(() => {
+    resumeAutopilot();
+    autopilotResumeTimer = null;
+  }, delayMs);
+}
+
+function markEarlyInteraction(): void {
+  if (userInteractedEarly) return;
+  userInteractedEarly = true;
+  if (autopilotArmTimer !== null) {
+    clearTimeout(autopilotArmTimer);
+    autopilotArmTimer = null;
+  }
+}
+
+function resumeAutopilot(): void {
+  if (!autopilotActive || !autopilotPaused || aimActive) return;
+  autopilotPaused = false;
+  autopilotZoom = zoomLevel;
+  signalLayer.beginScan();
+  if (autopilotRaf !== null) cancelAnimationFrame(autopilotRaf);
+  autopilotRaf = requestAnimationFrame(runAutopilotFrame);
+}
 
 // ── Zoom ──────────────────────────────────────────────────────────────────────
 
@@ -314,6 +437,8 @@ function onAimStart(clientX: number, clientY: number) {
     clearTimeout(returnTimer);
     returnTimer = null;
   }
+  markEarlyInteraction();
+  pauseAutopilotForInteraction();
   aimActive = true;
   aimedObservation = null;
   canvas.classList.add("aiming");
@@ -327,6 +452,13 @@ function onAimEnd() {
   renderer.setAimPoint(null, null);
 
   returnTimer = setTimeout(() => {
+    if (autopilotActive) {
+      aimActive = false;
+      renderer.setAimPoint(null, null);
+      resumeAutopilot();
+      returnTimer = null;
+      return;
+    }
     status.textContent = lastLiveStatus;
     engine.updateFromData(lastObservation);
     renderer.setObservation(lastObservation);
@@ -384,6 +516,9 @@ canvas.addEventListener("pointercancel", () => {
 canvas.addEventListener(
   "wheel",
   (e: WheelEvent) => {
+    markEarlyInteraction();
+    pauseAutopilotForInteraction();
+    scheduleAutopilotResume(1800);
     e.preventDefault();
     // Normalise deltaY: line mode (Firefox) → pixels
     const deltaPixels = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
@@ -397,6 +532,9 @@ canvas.addEventListener(
 canvas.addEventListener(
   "touchstart",
   (e: TouchEvent) => {
+    markEarlyInteraction();
+    pauseAutopilotForInteraction();
+    scheduleAutopilotResume(2200);
     if (e.touches.length === 2) {
       e.preventDefault();
       pinchStartDist = Math.hypot(
@@ -426,6 +564,7 @@ canvas.addEventListener(
 
 canvas.addEventListener("touchend", () => {
   pinchStartDist = null;
+  scheduleAutopilotResume(1200);
 });
 
 // ── RMS → renderer tick ───────────────────────────────────────────────────────
@@ -443,6 +582,11 @@ requestAnimationFrame(tick);
 async function startAudio() {
   startBtn.classList.add("hidden");
   iosHeadphonesTip?.classList.add("hidden");
+  userInteractedEarly = false;
+  if (autopilotArmTimer !== null) {
+    clearTimeout(autopilotArmTimer);
+    autopilotArmTimer = null;
+  }
 
   // Web Audio requires user gesture — create context here
   const audioCtx = new AudioContext();
@@ -474,13 +618,15 @@ async function startAudio() {
     lastLiveStatus = `LIVE · ${data.targetName.toUpperCase()} · ${data.instrument}`;
 
     // Only push updates to audio/visuals if user isn't manually aiming
-    if (!aimActive) {
+    if (!aimActive && !autopilotActive) {
       engine.updateFromData(data);
       renderer.setObservation(data);
       generativeBg.setObservation(data);
       overlay.update(data);
       signalLayer.setObservation(data);
       status.textContent = lastLiveStatus;
+    } else if (autopilotActive) {
+      overlay.update(data);
     }
   });
 
@@ -489,9 +635,22 @@ async function startAudio() {
   startBtn.textContent = "■  STOP";
   startBtn.classList.add("stop-mode");
   startBtn.classList.remove("hidden");
+
+  // Auto-enable autopilot after 5s only if user has not panned/zoomed.
+  autopilotArmTimer = setTimeout(() => {
+    autopilotArmTimer = null;
+    if (!userInteractedEarly && !autopilotActive && engine.isStarted) {
+      startAutopilot();
+    }
+  }, 5000);
 }
 
 function stopAudio() {
+  if (autopilotArmTimer !== null) {
+    clearTimeout(autopilotArmTimer);
+    autopilotArmTimer = null;
+  }
+  stopAutopilot();
   engine.stop();
   signalLayer.stop();
   fetcher.stop();
@@ -500,6 +659,14 @@ function stopAudio() {
   startBtn.classList.remove("stop-mode");
   iosHeadphonesTip?.classList.remove("hidden");
 }
+
+autopilotBtn.addEventListener("click", () => {
+  if (autopilotActive) {
+    stopAutopilot();
+  } else {
+    startAutopilot();
+  }
+});
 
 startBtn.addEventListener("click", () => {
   if (engine.isStarted) {
