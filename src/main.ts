@@ -42,7 +42,7 @@ document.getElementById("app")!.appendChild(status);
 // JWST badge
 const badge = document.createElement("div");
 badge.id = "badge";
-badge.innerHTML = "WEBB <span>SYNTH</span>";
+badge.innerHTML = "WEBBWAVE";
 document.getElementById("app")!.appendChild(badge);
 
 // Controls panel

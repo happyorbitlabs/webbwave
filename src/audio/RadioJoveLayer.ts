@@ -154,6 +154,7 @@ export class RadioJoveLayer {
   private grainLines: GrainLine[] = [];
 
   private filter: BiquadFilterNode | null = null;
+  private sourceLowpass: BiquadFilterNode | null = null;
   private convolver: ConvolverNode | null = null;
   private dryGain: GainNode | null = null;
   private reverbGain: GainNode | null = null;
@@ -190,12 +191,18 @@ export class RadioJoveLayer {
     this.dryGain.connect(this.masterGain);
 
     // Lowpass filter
+    this.sourceLowpass = ctx.createBiquadFilter();
+    this.sourceLowpass.type = "lowpass";
+    this.sourceLowpass.frequency.value = 1100;
+    this.sourceLowpass.Q.value = 0.45;
+
     this.filter = ctx.createBiquadFilter();
     this.filter.type = "lowpass";
     this.filter.frequency.value = 1200;
     this.filter.Q.value = 1.0;
     this.filter.connect(this.dryGain);
     this.filter.connect(this.convolver);
+    this.sourceLowpass.connect(this.filter);
 
     // LFO on master gain
     this.lfoGain = ctx.createGain();
@@ -220,6 +227,7 @@ export class RadioJoveLayer {
       this.grainInputGain,
       this.grainOutputGain,
     );
+    this.sourceLowpass.connect(this.grainInputGain);
     this.grainOutputGain.connect(this.reverbGain);
 
     // All 5 tracks wired up, gains start at 0
@@ -232,8 +240,7 @@ export class RadioJoveLayer {
 
       const gain = ctx.createGain();
       gain.gain.value = 0;
-      gain.connect(this.filter!);
-      gain.connect(this.grainInputGain!);
+      gain.connect(this.sourceLowpass!);
 
       const src = ctx.createMediaElementSource(el);
       src.connect(gain);
@@ -300,6 +307,12 @@ export class RadioJoveLayer {
     if (this._level > 0 && !this._anyPlaying()) {
       this._startAll(now);
     }
+
+    // Tie source harshness control to SIGNAL level.
+    // Lower level = darker/smoother, higher level = more open.
+    const cutoff = 450 * Math.pow(20000 / 450, this._level);
+    this.sourceLowpass?.frequency.setTargetAtTime(cutoff, now, 0.35);
+    this.sourceLowpass?.Q.setTargetAtTime(0.35 + this._level * 0.55, now, 0.35);
 
     this.masterGain.gain.setTargetAtTime(this._level * 0.55, now, 0.4);
   }
