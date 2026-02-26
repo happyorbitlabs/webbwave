@@ -4,7 +4,6 @@
   "framework": "vite",
   "functions": {
     "api/jwst.ts": {
-      "runtime": "nodejs22.x",
       "maxDuration": 120
     }
   },
