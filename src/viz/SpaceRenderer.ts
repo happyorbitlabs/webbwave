@@ -23,7 +23,10 @@ interface NebulaParticle {
   alpha: number
   size: number
   phase: number
-  driftX: number; driftY: number
+  pulseRate: number   // individual breathing rate
+  orbitR: number      // radius of slow lazy orbit
+  orbitRate: number   // angular speed of orbit
+  orbitPhase: number  // starting angle
 }
 
 const RING_RADII = [0.18, 0.30, 0.44, 0.60]
@@ -72,24 +75,27 @@ export class SpaceRenderer {
 
   private initNebula(): void {
     const rng = mulberry32(0xC0FFEE42)
-    // Palette: deep purple, teal, cobalt, violet
+    // Palette: deep purple, teal, cobalt, violet — kept but subtler
     const palette = [
       [0.35, 0.05, 0.65],
       [0.00, 0.55, 0.80],
       [0.10, 0.20, 0.80],
       [0.50, 0.10, 0.80],
     ]
-    this.nebula = Array.from({ length: 300 }, () => {
+    // Fewer, larger blobs — they feather more gracefully and don't overstack
+    this.nebula = Array.from({ length: 80 }, () => {
       const col = palette[Math.floor(rng() * palette.length)]
       return {
-        x:      rng(),
-        y:      rng(),
-        r:      col[0], g: col[1], b: col[2],
-        alpha:  0.03 + rng() * 0.04,
-        size:   40 + rng() * 120,
-        phase:  rng() * Math.PI * 2,
-        driftX: (rng() - 0.5) * 0.00015,
-        driftY: (rng() - 0.5) * 0.00015,
+        x:          rng(),
+        y:          rng(),
+        r:          col[0], g: col[1], b: col[2],
+        alpha:      0.010 + rng() * 0.018,   // much lower ceiling
+        size:       80 + rng() * 220,         // larger so they spread thin
+        phase:      rng() * Math.PI * 2,
+        pulseRate:  0.012 + rng() * 0.025,    // each blob breathes at its own rate
+        orbitR:     0.004 + rng() * 0.012,    // lazy orbital drift radius (normalised)
+        orbitRate:  0.004 + rng() * 0.010,    // very slow angular speed
+        orbitPhase: rng() * Math.PI * 2,
       }
     })
   }
@@ -146,26 +152,6 @@ export class SpaceRenderer {
 
     // Parallax scale: zoomed in = looking at a smaller sky patch = less shift per unit RA/Dec
     const parallaxScale = 1 / this.zoomLevel
-
-    // --- Nebula layer ---
-    // Nebula shifts more slowly than stars (closer layer = less parallax)
-    const nebulaOffX = (this.normalizedRA  - 0.5) * 0.12 * parallaxScale
-    const nebulaOffY = (this.normalizedDec - 0.5) * 0.08 * parallaxScale
-    for (const p of this.nebula) {
-      const px = ((p.x + nebulaOffX + Math.sin(t * 0.07 + p.phase) * p.driftX * 60) + 1) % 1 * w
-      const py = ((p.y + nebulaOffY + Math.cos(t * 0.05 + p.phase) * p.driftY * 60) + 1) % 1 * h
-      const alpha = p.alpha * (0.7 + 0.3 * Math.sin(t * 0.08 + p.phase))
-      // Nebula blobs grow slightly when zoomed in (more enveloping)
-      const nebulaSize = p.size * (0.7 + 0.3 * this.zoomLevel)
-
-      const grad = ctx.createRadialGradient(px, py, 0, px, py, nebulaSize)
-      grad.addColorStop(0, `rgba(${Math.round(p.r*255)},${Math.round(p.g*255)},${Math.round(p.b*255)},${alpha})`)
-      grad.addColorStop(1, 'rgba(0,0,0,0)')
-      ctx.fillStyle = grad
-      ctx.beginPath()
-      ctx.arc(px, py, nebulaSize, 0, Math.PI * 2)
-      ctx.fill()
-    }
 
     // --- Star field ---
     // Parallax: much larger offset so panning feels like flying through space

@@ -1,0 +1,17 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "functions": {
+    "api/jwst.ts": {
+      "runtime": "nodejs22.x",
+      "maxDuration": 120
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/jwst",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

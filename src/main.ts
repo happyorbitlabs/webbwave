@@ -1,6 +1,7 @@
 import './style.css'
 import { JWSTFetcher, DEFAULT_OBSERVATION, type ObservationData } from './data/JWSTFetcher'
-import { AmbientEngine } from './audio/AmbientEngine'
+import { AmbientEngine, CHORD_MODE_NAMES } from './audio/AmbientEngine'
+import { RadioJoveLayer } from './audio/RadioJoveLayer'
 import { SpaceRenderer } from './viz/SpaceRenderer'
 import { GenerativeBackground } from './viz/GenerativeBackground'
 import { InfoOverlay } from './ui/InfoOverlay'
@@ -54,6 +55,33 @@ controls.innerHTML = `
       <input type="range" id="pulse-slider" min="0" max="100" value="25" />
       <div class="knob-label">PULSE</div>
     </div>
+    <div class="knob-wrap">
+      <input type="range" id="signal-slider" min="0" max="100" value="0" />
+      <div class="knob-label">SIGNAL</div>
+    </div>
+  </div>
+  <div class="chord-picker" id="chord-picker">
+    <div class="piano" id="piano">
+      <div class="piano-white-row">
+        <button class="pkey white" data-semi="3"  data-note="C">C</button>
+        <button class="pkey white" data-semi="5"  data-note="D">D</button>
+        <button class="pkey white" data-semi="7"  data-note="E">E</button>
+        <button class="pkey white" data-semi="8"  data-note="F">F</button>
+        <button class="pkey white" data-semi="10" data-note="G">G</button>
+        <button class="pkey white active" data-semi="0" data-note="A">A</button>
+        <button class="pkey white" data-semi="2"  data-note="B">B</button>
+      </div>
+      <div class="piano-black-row">
+        <button class="pkey black" data-semi="4"  data-note="C♯"></button>
+        <button class="pkey black" data-semi="6"  data-note="D♯"></button>
+        <button class="pkey black" data-semi="9"  data-note="F♯"></button>
+        <button class="pkey black" data-semi="11" data-note="G♯"></button>
+        <button class="pkey black" data-semi="1"  data-note="A♯"></button>
+      </div>
+    </div>
+    <div class="mode-row" id="mode-row">
+      ${CHORD_MODE_NAMES.map((m, i) => `<button class="mode-btn${i === 0 ? ' active' : ''}" data-mode="${m}">${m}</button>`).join('')}
+    </div>
   </div>
 `
 document.getElementById('app')!.appendChild(controls)
@@ -72,6 +100,7 @@ const renderer     = new SpaceRenderer(canvas)
 const generativeBg = new GenerativeBackground(genCanvas)
 const overlay      = new InfoOverlay(overlayContainer)
 const engine       = new AmbientEngine()
+const signalLayer  = new RadioJoveLayer()
 const fetcher      = new JWSTFetcher()
 new InfoPanel(document.getElementById('app')!)
 
@@ -91,25 +120,63 @@ const colourSlider  = document.getElementById('colour-slider')  as HTMLInputElem
 const scatterSlider = document.getElementById('scatter-slider') as HTMLInputElement
 const pulseSlider   = document.getElementById('pulse-slider')   as HTMLInputElement
 const volumeSlider  = document.getElementById('volume-slider')  as HTMLInputElement
+const signalSlider  = document.getElementById('signal-slider')  as HTMLInputElement
 
 spaceSlider.addEventListener('input', () => {
-  engine.setSpace(Number(spaceSlider.value) / 100)
+  const v = Number(spaceSlider.value) / 100
+  engine.setSpace(v)
+  signalLayer.setSpace(v)
 })
 
 colourSlider.addEventListener('input', () => {
-  engine.setColour(Number(colourSlider.value) / 100)
+  const v = Number(colourSlider.value) / 100
+  engine.setColour(v)
+  signalLayer.setColour(v)
 })
 
 scatterSlider.addEventListener('input', () => {
-  engine.setScatter(Number(scatterSlider.value) / 100)
+  const v = Number(scatterSlider.value) / 100
+  engine.setScatter(v)
+  signalLayer.setScatter(v)
 })
 
 pulseSlider.addEventListener('input', () => {
-  engine.setPulse(Number(pulseSlider.value) / 100)
+  const v = Number(pulseSlider.value) / 100
+  engine.setPulse(v)
+  signalLayer.setPulse(v)
 })
 
 volumeSlider.addEventListener('input', () => {
   engine.setVolume(Number(volumeSlider.value) / 100)
+})
+
+signalSlider.addEventListener('input', () => {
+  signalLayer.setLevel(Number(signalSlider.value) / 100)
+})
+
+// Chord picker — piano keys + mode buttons
+let chordRoot = 0    // semitones above A1
+let chordMode = 'MAJ'
+
+const piano   = document.getElementById('piano')!
+const modeRow = document.getElementById('mode-row')!
+
+piano.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest('.pkey[data-semi]') as HTMLElement | null
+  if (!btn) return
+  chordRoot = Number(btn.dataset.semi)
+  piano.querySelectorAll('.pkey').forEach(b => b.classList.remove('active'))
+  btn.classList.add('active')
+  engine.setChord(chordRoot, chordMode)
+})
+
+modeRow.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest('.mode-btn') as HTMLElement | null
+  if (!btn) return
+  chordMode = btn.dataset.mode ?? 'MAJ'
+  modeRow.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'))
+  btn.classList.add('active')
+  engine.setChord(chordRoot, chordMode)
 })
 
 // ── Aim / sky-drag ────────────────────────────────────────────────────────────
@@ -131,7 +198,7 @@ function applyZoom(z: number) {
   zoomLevel = z
   renderer.setZoom(z)
   generativeBg.setZoom(z)
-  const zoomNorm = (z - 0.5) / 2.5   // remap [0.5, 3.0] → [0, 1]
+  const zoomNorm = 1 - (z - 0.5) / 2.5   // remap [0.5, 3.0] → [1, 0]: zoomed out = full chord
   engine.setZoom(zoomNorm)
 }
 
@@ -284,6 +351,14 @@ async function startAudio() {
   engine.setVolume(Number(volumeSlider.value) / 100)
   engine.start(audioCtx)
 
+  // Connect Signal layer into the same audio graph (routes to destination directly)
+  signalLayer.connect(audioCtx, audioCtx.destination)
+  signalLayer.setSpace(Number(spaceSlider.value) / 100)
+  signalLayer.setColour(Number(colourSlider.value) / 100)
+  signalLayer.setScatter(Number(scatterSlider.value) / 100)
+  signalLayer.setPulse(Number(pulseSlider.value) / 100)
+  signalLayer.setObservation(DEFAULT_OBSERVATION)
+
   // Apply default data immediately so audio starts
   engine.updateFromData(DEFAULT_OBSERVATION)
 
@@ -298,9 +373,10 @@ async function startAudio() {
       renderer.setObservation(data)
       status.textContent = lastLiveStatus
     }
-    // Always update generative background and overlay
+    // Always update generative background, overlay, and signal layer
     generativeBg.setObservation(data)
     overlay.update(data)
+    signalLayer.setObservation(data)
   })
 
   // Show status and flip button to stop mode
@@ -312,6 +388,7 @@ async function startAudio() {
 
 function stopAudio() {
   engine.stop()
+  signalLayer.stop()
   fetcher.stop()
   status.classList.remove('visible')
   startBtn.textContent = '▶  START LISTENING'

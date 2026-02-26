@@ -3,8 +3,27 @@ import { mapObservation } from './DataMapper'
 
 const RAMP_TIME_S = 4.0
 
-// Fixed drone chord: A1 / E2 / A2 / C#3 (open fifth + major third, root 55 Hz)
-const DRONE_FREQS = [55, 82.41, 110, 138.59] as const
+// Base root frequency: A1 = 55 Hz
+const ROOT_HZ = 55
+
+// Chord modes — interval sets in semitones above the root, voiced across ~2 octaves
+// 7 intervals, one per drone voice
+export const CHORD_MODES: Record<string, number[]> = {
+  'MAJ':  [0, 7, 12, 16, 19, 24, 31],  // R 5 R' M3 5 R'' 5  (open major)
+  'MIN':  [0, 7, 12, 15, 19, 24, 31],  // R 5 R' m3 5 R'' 5  (open minor)
+  'DOM7': [0, 7, 10, 12, 16, 19, 24],  // R 5 ♭7 R' M3 5 R'' (dominant 7)
+  'MAJ7': [0, 7, 11, 12, 16, 19, 24],  // R 5 M7 R' M3 5 R'' (major 7 / dreamy)
+  'SUS4': [0, 5, 7,  12, 17, 19, 24],  // R 4 5  R' 4  5 R'' (suspended 4)
+  'MIN7': [0, 7, 10, 12, 15, 19, 24],  // R 5 ♭7 R' m3 5 R'' (minor 7)
+}
+
+export const CHORD_MODE_NAMES = Object.keys(CHORD_MODES)
+
+// Compute absolute frequencies for a given root (semitones above A1=55Hz) and mode
+function buildFreqs(rootSemitones: number, mode: string): number[] {
+  const intervals = CHORD_MODES[mode] ?? CHORD_MODES['MAJ']
+  return intervals.map(iv => ROOT_HZ * Math.pow(2, (rootSemitones + iv) / 12))
+}
 
 // Generate a long white-noise decay impulse for convolution reverb
 function makeImpulseResponse(ctx: AudioContext, duration: number, decay: number): AudioBuffer {
@@ -111,6 +130,10 @@ export class AmbientEngine {
   private cutoffOverride: number | null = null
   private _isStarted = false
   private _zoomNorm = 0.2   // default: (1.0-0.5)/2.5 for zoomLevel=1.0
+  // Per-voice density weight set by data/coords — zoom gates on top of this
+  private _voiceDensity = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  private _rootSemitones = 0   // semitones above A1 for current root
+  private _chordMode     = 'MAJ'
 
   get isStarted(): boolean { return this._isStarted }
 
@@ -136,15 +159,15 @@ export class AmbientEngine {
 
     // Reverb
     this.convolver = ctx.createConvolver()
-    this.convolver.buffer = makeImpulseResponse(ctx, 6.0, 2.0)
+    this.convolver.buffer = makeImpulseResponse(ctx, 14.0, 1.4)  // 14s tail, slower decay
 
     this.reverbGain = ctx.createGain()
-    this.reverbGain.gain.value = 0.6
+    this.reverbGain.gain.value = 1.2   // >1 for a truly vast wash
     this.convolver.connect(this.reverbGain)
     this.reverbGain.connect(this.masterGain)
 
     this.dryGain = ctx.createGain()
-    this.dryGain.gain.value = 0.3
+    this.dryGain.gain.value = 0.15  // more submerged in reverb by default
     this.dryGain.connect(this.masterGain)
 
     // Lowpass filter — timbral control, not pitch
@@ -155,25 +178,28 @@ export class AmbientEngine {
     this.filter.connect(this.dryGain)
     this.filter.connect(this.convolver)
 
-    // LFO for amplitude swell
+    // LFO — modulates master gain for a gentle global swell, not per-voice tremolo
+    // lfoGain depth is kept small (≤ 0.05) so it reads as breathing, not fading
     this.lfoGain = ctx.createGain()
-    this.lfoGain.gain.value = 0.10
+    this.lfoGain.gain.value = 0.02   // ±0.02 amplitude modulation at rest
 
     this.lfo = ctx.createOscillator()
     this.lfo.type = 'sine'
     this.lfo.frequency.value = 0.03
     this.lfo.connect(this.lfoGain)
+    this.lfoGain.connect(this.masterGain.gain)  // modulate master, not each voice
     this.lfo.start()
 
-    // 4 fixed-pitch drone voices — frequencies NEVER change
-    for (let i = 0; i < 4; i++) {
+    // 7 drone voices — chord shape set by root + mode
+    const startFreqs = buildFreqs(this._rootSemitones, this._chordMode)
+    for (let i = 0; i < startFreqs.length; i++) {
       const osc = ctx.createOscillator()
       osc.type = 'triangle'           // softer than sawtooth
-      osc.frequency.value = DRONE_FREQS[i]
+      osc.frequency.value = startFreqs[i]
 
       const gain = ctx.createGain()
       gain.gain.value = 0.0
-      this.lfoGain!.connect(gain.gain)
+      // No LFO connection here — zoom/_applyZoom owns these gains entirely
 
       osc.connect(gain)
       gain.connect(this.filter)
@@ -194,20 +220,17 @@ export class AmbientEngine {
     this.grainLines = buildGrainCloud(ctx, this.grainInputGain, this.grainOutputGain)
     this.grainOutputGain.connect(this.reverbGain)
 
-    // Fade all voices and grain in over 2 s
+    // Fade master in over 2 s — voice gains are owned entirely by _applyZoom
     const now = ctx.currentTime
     this.masterGain.gain.linearRampToValueAtTime(0.7, now + 2.0)
-    this.voices.forEach((v, i) => {
-      const targetG = (0.25 / Math.sqrt(4)) * [1.0, 0.9, 0.8, 0.6][i]
-      v.gain.gain.linearRampToValueAtTime(targetG, now + 2.0)
-    })
+
+    // Apply zoom immediately so voice count matches current zoom level from the start
+    this._applyZoom(this._zoomNorm)
+
     // Fade grain cloud in with a slight delay for a 'bloom' effect
     this.grainLines.forEach((g, i) => {
       g.outputGain.gain.linearRampToValueAtTime(0.6, now + 3.0 + i * 0.15)
     })
-
-    // Re-assert zoom shape after initial fade-in ramp settles
-    setTimeout(() => this._applyZoom(this._zoomNorm), 2200)
   }
 
   // Observation data drives: filter colour, reverb space, LFO rate, grain density
@@ -223,20 +246,20 @@ export class AmbientEngine {
       this.filter?.frequency.linearRampToValueAtTime(p.filterCutoffHz, ramp)
     }
 
-    // Reverb space
-    const wet = p.reverbMix * this.blend
-    const dry = Math.max(0.1, 1 - wet * 0.6)
+    // Reverb space — scaled up for a much bigger room
+    const wet = (0.6 + p.reverbMix * 1.2) * this.blend
+    const dry = Math.max(0.02, 0.2 - p.reverbMix * 0.18)
     this.reverbGain?.gain.linearRampToValueAtTime(wet, ramp)
     this.dryGain?.gain.linearRampToValueAtTime(dry, ramp)
 
     // LFO breathing rate
     this.lfo?.frequency.linearRampToValueAtTime(p.lfoRateHz, ramp)
 
-    // Voice density: how many harmonics are active and at what level
-    this.voices.forEach((v, i) => {
-      const active = i < p.harmonicCount
-      const g = active ? (0.25 / Math.sqrt(p.harmonicCount)) * p.density : 0
-      v.gain.gain.linearRampToValueAtTime(g, ramp)
+    // Store per-voice density weights — zoom will gate these in _applyZoom
+    // harmonicCount from data mapper is 1-4; scale it up proportionally to 7 voices
+    const scaledCount = Math.round((p.harmonicCount / 4) * 7)
+    this.voices.forEach((_, i) => {
+      this._voiceDensity[i] = i < scaledCount ? p.density : 0
     })
 
     // Grain cloud density (feedback amount) driven by target type density
@@ -269,13 +292,13 @@ export class AmbientEngine {
     this.filter?.Q.setTargetAtTime(q, now, TC)
 
     // Reverb depth: right side = deeper space, more reverb
-    const wet = 0.3 + tRA * 0.55 * this.blend
-    const dry = Math.max(0.05, 1 - wet * 0.7)
+    const wet = (0.5 + tRA * 1.0) * this.blend
+    const dry = Math.max(0.02, 0.2 - tRA * 0.18)
     this.reverbGain?.gain.setTargetAtTime(wet, now, TC)
     this.dryGain?.gain.setTargetAtTime(dry, now, TC)
 
-    // LFO swell depth: lower sky = slower, deeper breathing
-    const lfoDepth = 0.03 + (1 - tDec) * 0.20
+    // LFO swell depth: subtle variation with sky position
+    const lfoDepth = 0.008 + (1 - tDec) * 0.025
     this.lfoGain?.gain.setTargetAtTime(lfoDepth, now, TC)
 
     // LFO rate: left = very slow, right = faster undulation
@@ -296,12 +319,10 @@ export class AmbientEngine {
       this.grainInputGain.gain.setTargetAtTime(0.3 + shimmer * 0.5, now, TC)
     }
 
-    // Voice presence: lower sky = fewer active harmonics (sparse), upper = full chord
-    this.voices.forEach((v, i) => {
-      const thresh = Math.round(tDec * 3)  // 0 voices at bottom, 3 more added at top
-      const active = i <= thresh
-      const g = active ? (0.25 / Math.sqrt(thresh + 1)) : 0
-      v.gain.gain.setTargetAtTime(g, now, TC)
+    // Store per-voice density weights from sky position — zoom gates these in _applyZoom
+    const thresh = Math.round(tDec * 6)  // 0 extra voices at bottom, 6 at top
+    this.voices.forEach((_, i) => {
+      this._voiceDensity[i] = i <= thresh ? (1 / Math.sqrt(thresh + 1)) : 0
     })
 
     // Re-assert zoom shape on top of coord sweep (TC=0.3 wins over TC=0.8)
@@ -318,18 +339,22 @@ export class AmbientEngine {
   }
 
   // SPACE — reverb size + grain cloud wetness
-  // Low: close, dry, present. High: vast, diffuse, submerged.
+  // Low: close, dry, present. High: vast cathedral wash, almost fully submerged.
   setSpace(value: number): void {
     this.blend = Math.max(0, Math.min(1, value))
     if (!this.ctx) return
     const now = this.ctx.currentTime
-    const wet = 0.15 + value * 0.75
-    const dry = Math.max(0.05, 1 - wet * 0.65)
+    const wet = 0.4 + value * 1.4    // 0.4 → 1.8: truly enormous at max
+    const dry = Math.max(0.02, 0.25 - value * 0.22)  // 0.25 → 0.03: almost pure reverb at max
     this.reverbGain?.gain.setTargetAtTime(wet, now, 0.4)
     this.dryGain?.gain.setTargetAtTime(dry, now, 0.4)
-    // Grain output tracks space — more space = more shimmer in the tail
-    const grainOut = 0.1 + value * 0.7
-    this.grainLines.forEach(g => g.outputGain.gain.setTargetAtTime(grainOut, now, 0.6))
+    // Grain tails also swell — longer feedback at high space
+    const grainOut = 0.2 + value * 1.2
+    const grainFb  = 0.35 + value * 0.45   // 0.35 → 0.80: long resonant tails
+    this.grainLines.forEach(g => {
+      g.outputGain.gain.setTargetAtTime(grainOut, now, 0.6)
+      g.feedback.gain.setTargetAtTime(grainFb, now, 0.8)
+    })
   }
 
   // COLOUR — filter cutoff + resonance Q
@@ -364,14 +389,15 @@ export class AmbientEngine {
   }
 
   // PULSE — LFO rate + LFO depth together
-  // Low: barely perceptible slow tide. High: deep, rhythmic breathing swell.
+  // Low: barely perceptible slow tide. High: gentle rhythmic breathing swell.
+  // Depth is kept small (max ±0.05 on masterGain) so it never causes deep fade-outs.
   setPulse(value: number): void {
     if (!this.ctx || !this.lfo || !this.lfoGain) return
     const now = this.ctx.currentTime
-    // Rate: 0.003 Hz (almost still) → 0.18 Hz (noticeable pulse)
-    const rate = 0.003 + value * 0.177
-    // Depth: whisper → heavy swell
-    const depth = 0.01 + value * 0.22
+    // Rate: 0.003 Hz (almost still) → 0.15 Hz (noticeable pulse)
+    const rate = 0.003 + value * 0.147
+    // Depth: ±0.005 (whisper) → ±0.05 (perceptible swell, never a full fade)
+    const depth = 0.005 + value * 0.045
     this.lfo.frequency.setTargetAtTime(rate, now, 0.5)
     this.lfoGain.gain.setTargetAtTime(depth, now, 0.5)
   }
@@ -387,30 +413,57 @@ export class AmbientEngine {
   private _applyZoom(value: number): void {
     if (!this.ctx) return
     const now = this.ctx.currentTime
-    const TC  = 0.3   // settles faster than any other ramp — zoom always wins
+    const TC  = 0.4   // fast enough to feel responsive zooming in and out
 
-    // Voice presence: fade harmonics in as zoom goes out
-    // i=0 (55 Hz): always present. i=3 (C#3): only when zoomed far out.
-    const baseGains = [1.0, 0.9, 0.8, 0.6]
+    // Zoom gates voice count: zoomed out = full chord, zoomed in = root only (never silent).
+    // value runs 0→1 (zoomed in → zoomed out).
+    //   i=0: always present (threshold = -0.12, so presence=1 even at value=0)
+    //   i=1: fades in above value≈0.12
+    //   i=2: fades in above value≈0.25
+    //   i=3: fades in above value≈0.40
+    //   i=4: fades in above value≈0.55
+    //   i=5: fades in above value≈0.68
+    //   i=6: fades in above value≈0.80
+    const thresholds = [-0.12, 0.12, 0.25, 0.40, 0.55, 0.68, 0.80]  // voice 0 always present
+    // Higher voices are quieter — natural harmonic series weighting
+    const baseGains  = [1.0,  0.85, 0.75, 0.60, 0.45, 0.35, 0.22]
+    // Master scaled for 7 voices
+    const MASTER     = 0.25 / Math.sqrt(7)
+
     this.voices.forEach((v, i) => {
-      const presence = Math.max(0, Math.min(1, value * 4 - i + 1))
-      const target   = (0.25 / Math.sqrt(4)) * baseGains[i] * presence
+      // Zoom presence: 0 below threshold, rises to 1 over a 0.12 window
+      const presence = Math.max(0, Math.min(1, (value - thresholds[i]) / 0.12))
+      // Density from observation/coords shapes the mix but zoom presence is the hard gate
+      const target   = MASTER * baseGains[i] * presence * this._voiceDensity[i]
+      v.gain.gain.cancelScheduledValues(now)
       v.gain.gain.setTargetAtTime(target, now, TC)
     })
 
     // Grain shimmer: more output + longer tails when zoomed out
-    const grainOut = 0.1 + value * 0.65
-    this.grainOutputGain?.gain.setTargetAtTime(grainOut, now, TC)
-    const feedback = 0.25 + value * 0.25
-    this.grainLines.forEach(g => g.feedback.gain.setTargetAtTime(feedback, now, TC))
+    const grainOut = 0.05 + value * 0.70
+    this.grainOutputGain?.gain.setTargetAtTime(grainOut, now, 0.5)
+    const feedback = 0.20 + value * 0.30
+    this.grainLines.forEach(g => g.feedback.gain.setTargetAtTime(feedback, now, 0.5))
 
-    // LFO depth: wider swell when zoomed out
-    const lfoDepth = 0.05 + value * 0.13
-    this.lfoGain?.gain.setTargetAtTime(lfoDepth, now, TC)
+    // LFO depth: slightly deeper swell when zoomed out, but never dominant
+    const lfoDepth = 0.01 + value * 0.03
+    this.lfoGain?.gain.setTargetAtTime(lfoDepth, now, 0.5)
 
-    // Filter Q: purer single-frequency ring when zoomed in, flatter blend zoomed out
-    const q = 2.5 - value * 1.7
-    this.filter?.Q.setTargetAtTime(q, now, TC)
+    // Filter Q: purer ring when zoomed in, flat blend zoomed out
+    const q = 2.8 - value * 2.0
+    this.filter?.Q.setTargetAtTime(q, now, 0.5)
+  }
+
+  // CHORD — change root and/or mode; glides all oscillators over ~2 s
+  setChord(rootSemitones: number, mode: string): void {
+    this._rootSemitones = rootSemitones
+    this._chordMode     = mode
+    if (!this.ctx || !this._isStarted) return
+    const freqs = buildFreqs(rootSemitones, mode)
+    const now   = this.ctx.currentTime
+    this.voices.forEach((v, i) => {
+      v.osc.frequency.setTargetAtTime(freqs[i], now, 1.5)
+    })
   }
 
   // Legacy stubs kept so TypeScript doesn't error if called elsewhere

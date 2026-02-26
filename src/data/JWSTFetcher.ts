@@ -10,7 +10,7 @@ export interface ObservationData {
 
 export type ObservationCallback = (data: ObservationData) => void
 
-const DEFAULT_OBSERVATION: ObservationData = {
+export const DEFAULT_OBSERVATION: ObservationData = {
   targetName: 'SMACS 0723',
   ra: 110.84,
   dec: -73.45,
@@ -22,14 +22,26 @@ const DEFAULT_OBSERVATION: ObservationData = {
 
 const POLL_INTERVAL_MS = 60_000
 
+// MAST JWST search API — POST, returns most-recent science observations
+// Excludes calibration frames (DARK/FLAT/BIAS) and unknown targets
+const MAST_BODY = JSON.stringify({
+  limit: 10,
+  sort_by: ['date_obs'],
+  sort_desc: [true],
+  select_cols: ['targprop', 'targ_ra', 'targ_dec', 'instrume', 'opticalElements', 'targtype', 'exp_type'],
+  skip_count: true,   // omits totalResults count — cuts response time dramatically
+})
+
+// In dev: proxy through Vite (/mast → mast.stsci.edu) to avoid CORS
+// In prod: Vercel Edge Function at /api/jwst handles the upstream fetch
+const API_URL = import.meta.env.DEV ? '/mast/search/jwst/api/v0.1/search' : '/api/jwst'
+
 export class JWSTFetcher {
   private intervalId: ReturnType<typeof setInterval> | null = null
   private callback: ObservationCallback | null = null
 
   start(callback: ObservationCallback): void {
     this.callback = callback
-
-    // Fetch immediately, then poll
     this.fetch()
     this.intervalId = setInterval(() => this.fetch(), POLL_INTERVAL_MS)
   }
@@ -43,37 +55,46 @@ export class JWSTFetcher {
 
   private async fetch(): Promise<void> {
     try {
-      const data = await this.fetchFromJWSTApi()
+      const data = await this.fetchFromMAST()
       this.callback?.(data)
-    } catch {
-      console.warn('JWSTFetcher: all sources failed, using default data')
+    } catch (err) {
+      console.warn('JWSTFetcher: fetch failed, using default data', err)
       this.callback?.({ ...DEFAULT_OBSERVATION, timestamp: new Date() })
     }
   }
 
-  private async fetchFromJWSTApi(): Promise<ObservationData> {
-    const res = await fetch('https://jwstapi.com/observation/all?limit=1', {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(10_000),
+  private async fetchFromMAST(): Promise<ObservationData> {
+    // Dev: POST directly to MAST via Vite proxy
+    // Prod: GET /api/jwst — Node.js function with in-memory cache serves instantly after first hit
+    const isProd = !import.meta.env.DEV
+    const res = await fetch(API_URL, {
+      method: isProd ? 'GET' : 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: isProd ? undefined : MAST_BODY,
+      signal: AbortSignal.timeout(120_000),  // cold Vercel cache can take ~90s on first request
     })
 
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
     const json = await res.json()
-    const arr = Array.isArray(json) ? json : json.data
-    if (!Array.isArray(arr) || arr.length === 0) throw new Error('Empty response')
+    const results: Record<string, unknown>[] = json.results ?? []
+    if (results.length === 0) throw new Error('Empty response')
 
-    const obs = arr[0]
+    // Skip calibration/engineering frames — find first real science target
+    const obs = results.find(r =>
+      r.targprop && r.targprop !== 'UNKNOWN' &&
+      !String(r.exp_type ?? '').match(/DARK|FLAT|BIAS|LAMP|FOCUS/)
+    ) ?? results[0]
+
     return {
-      targetName: obs.target_name ?? obs.targetName ?? 'Unknown',
-      ra:         Number(obs.s_ra  ?? obs.ra  ?? DEFAULT_OBSERVATION.ra),
-      dec:        Number(obs.s_dec ?? obs.dec ?? DEFAULT_OBSERVATION.dec),
-      instrument: obs.instrument_name ?? obs.instrumentName ?? 'Unknown',
-      filter:     obs.filters ?? obs.filter ?? 'Unknown',
-      targetType: obs.target_classification ?? obs.type ?? 'unknown',
+      targetName: String(obs.targprop ?? 'Unknown'),
+      ra:         Number(obs.targ_ra  ?? DEFAULT_OBSERVATION.ra),
+      dec:        Number(obs.targ_dec ?? DEFAULT_OBSERVATION.dec),
+      instrument: String(obs.instrume ?? 'Unknown'),
+      filter:     String(obs.opticalElements ?? 'Unknown'),
+      targetType: String(obs.targtype ?? 'unknown').toLowerCase(),
       timestamp:  new Date(),
     }
   }
 }
 
-export { DEFAULT_OBSERVATION }
