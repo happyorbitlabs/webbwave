@@ -134,6 +134,12 @@ const signalSlider = document.getElementById(
   "signal-slider",
 ) as HTMLInputElement;
 
+function mapSignalSlider(value01: number): number {
+  const clamped = Math.max(0, Math.min(1, value01));
+  // Taper response and cap max so SIGNAL sits behind the melodic drone.
+  return Math.pow(clamped, 1.5) * 0.7;
+}
+
 spaceSlider.addEventListener("input", () => {
   const v = Number(spaceSlider.value) / 100;
   engine.setSpace(v);
@@ -163,7 +169,7 @@ volumeSlider.addEventListener("input", () => {
 });
 
 signalSlider.addEventListener("input", () => {
-  signalLayer.setLevel(Number(signalSlider.value) / 100);
+  signalLayer.setLevel(mapSignalSlider(Number(signalSlider.value) / 100));
 });
 
 // Chord picker — piano keys + mode buttons
@@ -443,6 +449,7 @@ async function startAudio() {
   signalLayer.setColour(Number(colourSlider.value) / 100);
   signalLayer.setScatter(Number(scatterSlider.value) / 100);
   signalLayer.setPulse(Number(pulseSlider.value) / 100);
+  signalLayer.setLevel(mapSignalSlider(Number(signalSlider.value) / 100));
   signalLayer.setObservation(DEFAULT_OBSERVATION);
 
   // Apply default data immediately so audio starts
