@@ -291,9 +291,9 @@ export class GenerativeBackground {
     const rng = mulberry32(seed);
     const type = targetType.toLowerCase();
 
-    // if (type.includes('galaxy cluster') || type.includes('galaxy')) {
-    //   return this.buildGalaxyCluster(rng, palette, style)
-    // }
+    if (type.includes("galaxy cluster") || type.includes("galaxy")) {
+      return this.buildGalaxyCluster(rng, palette, style);
+    }
     if (type.includes("nebula")) return this.buildNebula(rng, palette, style);
     if (type.includes("star")) return this.buildStar(rng, palette, style);
     return this.buildDeepField(rng, palette, style);
