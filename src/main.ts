@@ -10,6 +10,9 @@ import { SpaceRenderer } from "./viz/SpaceRenderer";
 import { GenerativeBackground } from "./viz/GenerativeBackground";
 import { InfoOverlay } from "./ui/InfoOverlay";
 import { InfoPanel } from "./ui/InfoPanel";
+import { inject } from "@vercel/analytics";
+
+inject();
 
 // ── DOM ──────────────────────────────────────────────────────────────────────
 
