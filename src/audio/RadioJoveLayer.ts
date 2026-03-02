@@ -8,11 +8,16 @@
 //   jellyfish.mp3 — IC 443 Jellyfish Nebula multi-wavelength sonification (Chandra + JWST)
 //   tycho.mp3     — Tycho's Supernova Remnant X-ray sonification (Chandra)
 //   m87.mp3       — M87 galaxy + black hole jet sonification (Chandra + JWST)
+//   casa.mp3      — Cassiopeia A supernova remnant all-wavelength sonification (Chandra + Hubble + Webb 2024)
+//   30dor.mp3     — 30 Doradus / Tarantula Nebula all-wavelength sonification (Chandra + Webb 2024)
+//   hand.mp3      — MSH 15-52 "Hand of God" pulsar wind nebula sonification (Chandra + IXPE 2024)
+//   catseye.mp3   — Cat's Eye Nebula (NGC 6543) all-wavelength sonification (Chandra + Hubble 2021)
+//   m51.mp3       — M51 Whirlpool Galaxy all-wavelength sonification (Chandra + Hubble 2021)
 //
 // Observation → track selection:
-//   galaxy / galaxy cluster → m74, m87, chorus, jellyfish, tycho
-//   nebula / supernova      → jellyfish, tycho, chorus, m74, m87
-//   star                    → tycho, chorus, m74, m87, jellyfish
+//   galaxy / galaxy cluster → m74, m87, m51, chorus, jellyfish, tycho, casa, 30dor, hand, catseye
+//   nebula / supernova      → jellyfish, tycho, casa, 30dor, hand, catseye, chorus, m74, m87, m51
+//   star                    → tycho, casa, hand, chorus, m74, m87, jellyfish, 30dor, catseye, m51
 //   default / unknown       → all tracks
 //
 // Within the active track set the layer performs a slow autonomous random walk —
@@ -33,10 +38,18 @@ const TRACKS = {
   jellyfish: "/audio/jellyfish.mp3",
   tycho: "/audio/tycho.mp3",
   m87: "/audio/m87.mp3",
+  casa: "/audio/casa.mp3",
+  "30dor": "/audio/30dor.mp3",
+  hand: "/audio/hand.mp3",
+  catseye: "/audio/catseye.mp3",
+  m51: "/audio/m51.mp3",
 } as const;
 
 type TrackKey = keyof typeof TRACKS;
-const ALL_TRACKS: TrackKey[] = ["chorus", "m74", "jellyfish", "tycho", "m87"];
+const ALL_TRACKS: TrackKey[] = [
+  "chorus", "m74", "jellyfish", "tycho", "m87",
+  "casa", "30dor", "hand", "catseye", "m51",
+];
 
 // Which tracks are active for a given observation
 function tracksForObservation(obs: ObservationData): TrackKey[] {
@@ -46,17 +59,17 @@ function tracksForObservation(obs: ObservationData): TrackKey[] {
     type.includes("cluster") ||
     type.includes("quasar")
   ) {
-    return ["m74", "m87", "chorus", "jellyfish", "tycho"];
+    return ["m74", "m87", "m51", "chorus", "jellyfish", "tycho", "casa", "30dor", "hand", "catseye"];
   }
   if (
     type.includes("nebula") ||
     type.includes("supernova") ||
     type.includes("remnant")
   ) {
-    return ["jellyfish", "tycho", "chorus", "m74", "m87"];
+    return ["jellyfish", "tycho", "casa", "30dor", "hand", "catseye", "chorus", "m74", "m87", "m51"];
   }
   if (type.includes("star") || type.includes("stellar")) {
-    return ["tycho", "chorus", "m74", "m87", "jellyfish"];
+    return ["tycho", "casa", "hand", "chorus", "m74", "m87", "jellyfish", "30dor", "catseye", "m51"];
   }
   return ALL_TRACKS;
 }

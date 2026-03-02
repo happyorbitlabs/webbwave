@@ -241,12 +241,9 @@ let lastObservation: ObservationData = DEFAULT_OBSERVATION;
 const recentObservations: ObservationData[] = [DEFAULT_OBSERVATION];
 let aimedObservation: ObservationData | null = null;
 let autopilotActive = false;
-let autopilotPaused = false;
 let autopilotRaf: number | null = null;
-let autopilotResumeTimer: ReturnType<typeof setTimeout> | null = null;
 let autopilotZoom = 1.0;
 let autopilotArmTimer: ReturnType<typeof setTimeout> | null = null;
-let userInteractedEarly = false;
 
 function setAutopilotState(active: boolean): void {
   autopilotBtn.classList.toggle("active", active);
@@ -254,7 +251,7 @@ function setAutopilotState(active: boolean): void {
 }
 
 function runAutopilotFrame(timeMs: number): void {
-  if (!autopilotActive || autopilotPaused) return;
+  if (!autopilotActive) return;
   const t = timeMs / 1000;
   const nx = Math.max(
     0,
@@ -282,7 +279,6 @@ function runAutopilotFrame(timeMs: number): void {
 function startAutopilot(): void {
   if (autopilotActive) return;
   autopilotActive = true;
-  autopilotPaused = false;
   autopilotZoom = zoomLevel;
   setAutopilotState(true);
   signalLayer.beginScan();
@@ -292,15 +288,10 @@ function startAutopilot(): void {
 
 function stopAutopilot(): void {
   autopilotActive = false;
-  autopilotPaused = false;
   setAutopilotState(false);
   if (autopilotRaf !== null) {
     cancelAnimationFrame(autopilotRaf);
     autopilotRaf = null;
-  }
-  if (autopilotResumeTimer !== null) {
-    clearTimeout(autopilotResumeTimer);
-    autopilotResumeTimer = null;
   }
   renderer.setAimPoint(null, null);
   signalLayer.endScan();
@@ -313,40 +304,18 @@ function stopAutopilot(): void {
   }
 }
 
-function pauseAutopilotForInteraction(): void {
-  if (!autopilotActive || autopilotPaused) return;
-  autopilotPaused = true;
-  if (autopilotRaf !== null) {
-    cancelAnimationFrame(autopilotRaf);
-    autopilotRaf = null;
-  }
-}
-
-function scheduleAutopilotResume(delayMs = 2200): void {
-  if (!autopilotActive) return;
-  if (autopilotResumeTimer !== null) clearTimeout(autopilotResumeTimer);
-  autopilotResumeTimer = setTimeout(() => {
-    resumeAutopilot();
-    autopilotResumeTimer = null;
-  }, delayMs);
-}
-
-function markEarlyInteraction(): void {
-  if (userInteractedEarly) return;
-  userInteractedEarly = true;
-  if (autopilotArmTimer !== null) {
-    clearTimeout(autopilotArmTimer);
+function armInactivityTimer(): void {
+  if (autopilotArmTimer !== null) clearTimeout(autopilotArmTimer);
+  autopilotArmTimer = setTimeout(() => {
     autopilotArmTimer = null;
-  }
+    if (!autopilotActive && engine.isStarted) startAutopilot();
+  }, 60_000);
 }
 
-function resumeAutopilot(): void {
-  if (!autopilotActive || !autopilotPaused || aimActive) return;
-  autopilotPaused = false;
-  autopilotZoom = zoomLevel;
-  signalLayer.beginScan();
-  if (autopilotRaf !== null) cancelAnimationFrame(autopilotRaf);
-  autopilotRaf = requestAnimationFrame(runAutopilotFrame);
+function onUserInteraction(): void {
+  if (!engine.isStarted) return;
+  if (autopilotActive) stopAutopilot();
+  armInactivityTimer();
 }
 
 // ── Zoom ──────────────────────────────────────────────────────────────────────
@@ -440,8 +409,7 @@ function onAimStart(clientX: number, clientY: number) {
     clearTimeout(returnTimer);
     returnTimer = null;
   }
-  markEarlyInteraction();
-  pauseAutopilotForInteraction();
+  onUserInteraction();
   aimActive = true;
   aimedObservation = null;
   canvas.classList.add("aiming");
@@ -455,13 +423,6 @@ function onAimEnd() {
   renderer.setAimPoint(null, null);
 
   returnTimer = setTimeout(() => {
-    if (autopilotActive) {
-      aimActive = false;
-      renderer.setAimPoint(null, null);
-      resumeAutopilot();
-      returnTimer = null;
-      return;
-    }
     status.textContent = lastLiveStatus;
     engine.updateFromData(lastObservation);
     renderer.setObservation(lastObservation);
@@ -519,9 +480,7 @@ canvas.addEventListener("pointercancel", () => {
 canvas.addEventListener(
   "wheel",
   (e: WheelEvent) => {
-    markEarlyInteraction();
-    pauseAutopilotForInteraction();
-    scheduleAutopilotResume(1800);
+    onUserInteraction();
     e.preventDefault();
     // Normalise deltaY: line mode (Firefox) → pixels
     const deltaPixels = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
@@ -535,9 +494,7 @@ canvas.addEventListener(
 canvas.addEventListener(
   "touchstart",
   (e: TouchEvent) => {
-    markEarlyInteraction();
-    pauseAutopilotForInteraction();
-    scheduleAutopilotResume(2200);
+    onUserInteraction();
     if (e.touches.length === 2) {
       e.preventDefault();
       pinchStartDist = Math.hypot(
@@ -567,7 +524,6 @@ canvas.addEventListener(
 
 canvas.addEventListener("touchend", () => {
   pinchStartDist = null;
-  scheduleAutopilotResume(1200);
 });
 
 // ── RMS → renderer tick ───────────────────────────────────────────────────────
@@ -585,7 +541,6 @@ requestAnimationFrame(tick);
 async function startAudio() {
   startBtn.classList.add("hidden");
   iosHeadphonesTip?.classList.add("hidden");
-  userInteractedEarly = false;
   if (autopilotArmTimer !== null) {
     clearTimeout(autopilotArmTimer);
     autopilotArmTimer = null;
@@ -639,13 +594,8 @@ async function startAudio() {
   startBtn.classList.add("stop-mode");
   startBtn.classList.remove("hidden");
 
-  // Auto-enable autopilot after 5s only if user has not panned/zoomed.
-  autopilotArmTimer = setTimeout(() => {
-    autopilotArmTimer = null;
-    if (!userInteractedEarly && !autopilotActive && engine.isStarted) {
-      startAutopilot();
-    }
-  }, 5000);
+  // Auto-enable autopilot after 60s of inactivity.
+  armInactivityTimer();
 }
 
 function stopAudio() {
